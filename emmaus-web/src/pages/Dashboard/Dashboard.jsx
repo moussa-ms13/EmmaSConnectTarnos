@@ -309,12 +309,11 @@ function Dashboard() {
               </div>
             ) : (
               <p className="text-3xl font-extrabold text-gray-900 dark:text-white mt-1.5">
-                {companionBreakdown.total}
+                {companionBreakdown.total || 0}
               </p>
             )}
-            <p className="text-xs font-semibold text-emerald-600 flex items-center gap-1 mt-2">
-              <span className="inline-block transform -rotate-45 font-bold">↗</span>
-              4 ce mois
+            <p className="text-xs font-medium text-gray-400 dark:text-slate-400 mt-2">
+              {stats?.trends?.companions || 'Base compagnons'}
             </p>
           </div>
           <div className="w-11 h-11 rounded-xl bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
@@ -336,11 +335,11 @@ function Dashboard() {
               </div>
             ) : (
               <p className="text-3xl font-extrabold text-gray-900 dark:text-white mt-1.5">
-                {companionBreakdown.active}
+                {companionBreakdown.active || 0}
               </p>
             )}
             <p className="text-xs font-medium text-gray-400 dark:text-slate-400 mt-2">
-              {companionBreakdown.activePercent}% du total
+              {companionBreakdown.total > 0 ? `${companionBreakdown.activePercent}% du total` : '0% du total'}
             </p>
           </div>
           <div className="w-11 h-11 rounded-xl bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
@@ -362,12 +361,11 @@ function Dashboard() {
               </div>
             ) : (
               <p className="text-3xl font-extrabold text-gray-900 dark:text-white mt-1.5">
-                {appointmentsThisWeek}
+                {appointmentsThisWeek || 0}
               </p>
             )}
-            <p className="text-xs font-semibold text-rose-500 flex items-center gap-1 mt-2">
-              <span className="inline-block transform rotate-45 font-bold">↘</span>
-              2 vs semaine préc.
+            <p className="text-xs font-medium text-gray-400 dark:text-slate-400 mt-2">
+              {stats?.trends?.appointments || 'Semaine en cours'}
             </p>
           </div>
           <div className="w-11 h-11 rounded-xl bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
@@ -389,12 +387,11 @@ function Dashboard() {
               </div>
             ) : (
               <p className="text-3xl font-extrabold text-gray-900 dark:text-white mt-1.5">
-                {stats?.activeFormations ?? 38}
+                {stats?.activeFormations ?? 0}
               </p>
             )}
-            <p className="text-xs font-semibold text-emerald-600 flex items-center gap-1 mt-2">
-              <span className="inline-block transform -rotate-45 font-bold">↗</span>
-              7 ce mois
+            <p className="text-xs font-medium text-gray-400 dark:text-slate-400 mt-2">
+              {stats?.trends?.formations || 'Formations suivies'}
             </p>
           </div>
           <div className="w-11 h-11 rounded-xl bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0">
