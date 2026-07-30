@@ -24,13 +24,16 @@ import { getAllAppointments } from '../../services/appointmentService';
 /**
  * Helper to calculate current week's Monday-Sunday and French formatted header.
  */
-function getWeekRangeAndDays() {
+function getWeekRangeAndDays(offsetWeeks = 0) {
   const now = new Date();
-  const dayOfWeek = now.getDay();
+  const targetDate = new Date(now);
+  targetDate.setDate(now.getDate() + offsetWeeks * 7);
+
+  const dayOfWeek = targetDate.getDay();
   const distanceToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
 
-  const monday = new Date(now);
-  monday.setDate(now.getDate() + distanceToMonday);
+  const monday = new Date(targetDate);
+  monday.setDate(targetDate.getDate() + distanceToMonday);
   monday.setHours(0, 0, 0, 0);
 
   const sunday = new Date(monday);
@@ -62,11 +65,11 @@ function getWeekRangeAndDays() {
       name,
       date: dateNum,
       fullDate: d.toISOString().split('T')[0],
-      active: isToday,
+      active: isToday && offsetWeeks === 0,
     };
   });
 
-  return { weekHeader, days };
+  return { weekHeader, days, monday, sunday };
 }
 
 function Dashboard() {
@@ -75,16 +78,17 @@ function Dashboard() {
 
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [weekOffset, setWeekOffset] = useState(0);
   const [recentCompanions, setRecentCompanions] = useState([]);
   const [companionBreakdown, setCompanionBreakdown] = useState({
-    total: 46,
-    active: 34,
-    paused: 6,
-    inactive: 3,
-    medical: 3,
-    activePercent: 74,
+    total: 0,
+    active: 0,
+    paused: 0,
+    inactive: 0,
+    medical: 0,
+    activePercent: 0,
   });
-  const [appointmentsThisWeek, setAppointmentsThisWeek] = useState(12);
+  const [appointmentsThisWeek, setAppointmentsThisWeek] = useState(0);
   const [appointmentsList, setAppointmentsList] = useState([]);
 
   useEffect(() => {
@@ -210,8 +214,11 @@ function Dashboard() {
     background: `conic-gradient(#2563eb 0% ${actPct}%, #f59e0b ${actPct}% ${pausePct}%, #94a3b8 ${pausePct}% ${inactPct}%, #8b5cf6 ${inactPct}% 100%)`,
   };
 
-  // Dynamically calculate current week header and Monday-Sunday days
-  const { weekHeader, days: daysOfWeek } = React.useMemo(() => getWeekRangeAndDays(), []);
+  // Dynamically calculate current week header and Monday-Sunday days based on weekOffset
+  const { weekHeader, days: daysOfWeek } = React.useMemo(
+    () => getWeekRangeAndDays(weekOffset),
+    [weekOffset]
+  );
 
   // Map real appointments data from appointmentService to the calendar grid
   const scheduleEvents = React.useMemo(() => {
@@ -258,15 +265,32 @@ function Dashboard() {
   const notificationsList = [];
   const displayedRecentCompanions = recentCompanions;
 
-  const activityData = [
-    { day: 'Lun', sessions: 35, rdv: 20 },
-    { day: 'Mar', sessions: 55, rdv: 45 },
-    { day: 'Mer', sessions: 25, rdv: 15 },
-    { day: 'Jeu', sessions: 85, rdv: 65 },
-    { day: 'Ven', sessions: 50, rdv: 30 },
-    { day: 'Sam', sessions: 15, rdv: 10 },
-    { day: 'Dim', sessions: 4, rdv: 2 },
-  ];
+  const activityData = React.useMemo(() => {
+    const counts = [
+      { day: 'Lun', sessions: 0, rdv: 0 },
+      { day: 'Mar', sessions: 0, rdv: 0 },
+      { day: 'Mer', sessions: 0, rdv: 0 },
+      { day: 'Jeu', sessions: 0, rdv: 0 },
+      { day: 'Ven', sessions: 0, rdv: 0 },
+      { day: 'Sam', sessions: 0, rdv: 0 },
+      { day: 'Dim', sessions: 0, rdv: 0 },
+    ];
+
+    appointmentsList.forEach((apt) => {
+      if (!apt.appointment_date) return;
+      const d = new Date(apt.appointment_date);
+      let dayIdx = d.getDay(); // 0 is Dimanche
+      dayIdx = dayIdx === 0 ? 6 : dayIdx - 1; // 0 is Lundi
+      if (counts[dayIdx]) {
+        counts[dayIdx].rdv += 1;
+        counts[dayIdx].sessions += 1;
+      }
+    });
+
+    return counts;
+  }, [appointmentsList]);
+
+  const hasActivityData = activityData.some((item) => item.rdv > 0 || item.sessions > 0);
 
   return (
     <div className="space-y-6 pb-12 max-w-7xl mx-auto">
@@ -389,10 +413,29 @@ function Dashboard() {
               <p className="text-xs text-gray-400 mt-0.5">Planning des activités</p>
             </div>
             <div className="flex items-center gap-2">
-              <button type="button" className="w-8 h-8 rounded-full border border-gray-200 dark:border-slate-700 flex items-center justify-center text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors">
+              {weekOffset !== 0 && (
+                <button
+                  type="button"
+                  onClick={() => setWeekOffset(0)}
+                  className="px-2.5 py-1 text-xs font-bold rounded-lg border border-gray-200 dark:border-slate-700 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors mr-1"
+                >
+                  Aujourd'hui
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setWeekOffset((prev) => prev - 1)}
+                title="Semaine précédente"
+                className="w-8 h-8 rounded-full border border-gray-200 dark:border-slate-700 flex items-center justify-center text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors"
+              >
                 <ChevronLeft className="w-4 h-4" />
               </button>
-              <button type="button" className="w-8 h-8 rounded-full border border-gray-200 dark:border-slate-700 flex items-center justify-center text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors">
+              <button
+                type="button"
+                onClick={() => setWeekOffset((prev) => prev + 1)}
+                title="Semaine suivante"
+                className="w-8 h-8 rounded-full border border-gray-200 dark:border-slate-700 flex items-center justify-center text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors"
+              >
                 <ChevronRight className="w-4 h-4" />
               </button>
             </div>
@@ -409,21 +452,27 @@ function Dashboard() {
               </div>
             ))}
           </div>
-          <div className="grid grid-cols-7 pt-4 min-h-[90px] gap-2 items-start">
-            {daysOfWeek.map((day) => {
-              const events = scheduleEvents[day.name] || [];
-              return (
-                <div key={day.name} className="space-y-2">
-                  {events.map((ev, i) => (
-                    <div key={i} className={`${ev.color} ${ev.text} p-2 rounded-xl text-left shadow-sm hover:opacity-90 transition-opacity cursor-pointer`}>
-                      <p className="text-[10px] font-bold opacity-90 leading-tight">{ev.time}</p>
-                      <p className="text-xs font-semibold truncate leading-tight mt-0.5">{ev.title}</p>
-                    </div>
-                  ))}
-                </div>
-              );
-            })}
-          </div>
+          {Object.values(scheduleEvents).every((evs) => evs.length === 0) ? (
+            <div className="py-10 text-center text-gray-400 dark:text-slate-500 text-xs">
+              Aucune activité ou rendez-vous planifié pour cette semaine
+            </div>
+          ) : (
+            <div className="grid grid-cols-7 pt-4 min-h-[90px] gap-2 items-start">
+              {daysOfWeek.map((day) => {
+                const events = scheduleEvents[day.name] || [];
+                return (
+                  <div key={day.name} className="space-y-2">
+                    {events.map((ev, i) => (
+                      <div key={i} className={`${ev.color} ${ev.text} p-2 rounded-xl text-left shadow-sm hover:opacity-90 transition-opacity cursor-pointer`}>
+                        <p className="text-[10px] font-bold opacity-90 leading-tight">{ev.time}</p>
+                        <p className="text-xs font-semibold truncate leading-tight mt-0.5">{ev.title}</p>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-gray-100 dark:border-slate-800 shadow-sm flex flex-col justify-between">
@@ -468,41 +517,47 @@ function Dashboard() {
               {loading ? 'Chargement...' : `${companionBreakdown.total} compagnons au total`}
             </p>
           </div>
-          <div className="flex items-center justify-between gap-4 my-6">
-            <div className="w-36 h-36 rounded-full relative flex items-center justify-center shrink-0 shadow-inner" style={doughnutStyle}>
-              <div className="w-20 h-20 bg-white dark:bg-slate-900 rounded-full shadow-sm" />
+          {companionBreakdown.total === 0 ? (
+            <div className="py-12 text-center text-gray-400 dark:text-slate-500 text-xs my-auto">
+              Aucune donnée disponible
             </div>
-            <div className="flex-1 space-y-2.5">
-              <div className="flex items-center justify-between text-xs">
-                <div className="flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-blue-600 shrink-0" />
-                  <span className="font-medium text-gray-600 dark:text-slate-300">Actifs</span>
-                </div>
-                <span className="font-bold text-gray-900 dark:text-white">{loading ? <Loader2 className="w-3 h-3 animate-spin inline" /> : companionBreakdown.active}</span>
+          ) : (
+            <div className="flex items-center justify-between gap-4 my-6">
+              <div className="w-36 h-36 rounded-full relative flex items-center justify-center shrink-0 shadow-inner" style={doughnutStyle}>
+                <div className="w-20 h-20 bg-white dark:bg-slate-900 rounded-full shadow-sm" />
               </div>
-              <div className="flex items-center justify-between text-xs">
-                <div className="flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500 shrink-0" />
-                  <span className="font-medium text-gray-600 dark:text-slate-300">En pause</span>
+              <div className="flex-1 space-y-2.5">
+                <div className="flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-blue-600 shrink-0" />
+                    <span className="font-medium text-gray-600 dark:text-slate-300">Actifs</span>
+                  </div>
+                  <span className="font-bold text-gray-900 dark:text-white">{loading ? <Loader2 className="w-3 h-3 animate-spin inline" /> : companionBreakdown.active}</span>
                 </div>
-                <span className="font-bold text-gray-900 dark:text-white">{loading ? <Loader2 className="w-3 h-3 animate-spin inline" /> : companionBreakdown.paused}</span>
-              </div>
-              <div className="flex items-center justify-between text-xs">
-                <div className="flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-slate-400 shrink-0" />
-                  <span className="font-medium text-gray-600 dark:text-slate-300">Inactifs</span>
+                <div className="flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-amber-500 shrink-0" />
+                    <span className="font-medium text-gray-600 dark:text-slate-300">En pause</span>
+                  </div>
+                  <span className="font-bold text-gray-900 dark:text-white">{loading ? <Loader2 className="w-3 h-3 animate-spin inline" /> : companionBreakdown.paused}</span>
                 </div>
-                <span className="font-bold text-gray-900 dark:text-white">{loading ? <Loader2 className="w-3 h-3 animate-spin inline" /> : companionBreakdown.inactive}</span>
-              </div>
-              <div className="flex items-center justify-between text-xs">
-                <div className="flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-purple-500 shrink-0" />
-                  <span className="font-medium text-gray-600 dark:text-slate-300">Suivi médical</span>
+                <div className="flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-slate-400 shrink-0" />
+                    <span className="font-medium text-gray-600 dark:text-slate-300">Inactifs</span>
+                  </div>
+                  <span className="font-bold text-gray-900 dark:text-white">{loading ? <Loader2 className="w-3 h-3 animate-spin inline" /> : companionBreakdown.inactive}</span>
                 </div>
-                <span className="font-bold text-gray-900 dark:text-white">{loading ? <Loader2 className="w-3 h-3 animate-spin inline" /> : companionBreakdown.medical}</span>
+                <div className="flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-purple-500 shrink-0" />
+                    <span className="font-medium text-gray-600 dark:text-slate-300">Suivi médical</span>
+                  </div>
+                  <span className="font-bold text-gray-900 dark:text-white">{loading ? <Loader2 className="w-3 h-3 animate-spin inline" /> : companionBreakdown.medical}</span>
+                </div>
               </div>
             </div>
-          </div>
+          )}
         </div>
 
         <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-gray-100 dark:border-slate-800 shadow-sm flex flex-col justify-between">
@@ -510,19 +565,25 @@ function Dashboard() {
             <h3 className="text-base font-bold text-gray-900 dark:text-white">Activité hebdomadaire</h3>
             <p className="text-xs text-gray-400 mt-0.5">Sessions &amp; rendez-vous</p>
           </div>
-          <div className="mt-6">
-            <div className="grid grid-cols-7 gap-2 items-end h-32 pb-2 border-b border-gray-100 dark:border-slate-800">
-              {activityData.map((item) => (
-                <div key={item.day} className="flex items-end justify-center gap-1 h-full">
-                  <div className="w-2 sm:w-2.5 bg-blue-600 rounded-t-sm transition-all duration-300 hover:opacity-80" style={{ height: `${item.sessions}%` }} />
-                  <div className="w-2 sm:w-2.5 bg-blue-300 dark:bg-blue-500/50 rounded-t-sm transition-all duration-300 hover:opacity-80" style={{ height: `${item.rdv}%` }} />
-                </div>
-              ))}
+          {!hasActivityData ? (
+            <div className="py-12 text-center text-gray-400 dark:text-slate-500 text-xs my-auto">
+              Aucune donnée disponible
             </div>
-            <div className="grid grid-cols-7 text-center text-xs text-gray-400 font-medium mt-2">
-              {activityData.map((item) => <span key={item.day}>{item.day}</span>)}
+          ) : (
+            <div className="mt-6">
+              <div className="grid grid-cols-7 gap-2 items-end h-32 pb-2 border-b border-gray-100 dark:border-slate-800">
+                {activityData.map((item) => (
+                  <div key={item.day} className="flex items-end justify-center gap-1 h-full">
+                    <div className="w-2 sm:w-2.5 bg-blue-600 rounded-t-sm transition-all duration-300 hover:opacity-80" style={{ height: `${Math.min(100, item.sessions * 20)}%` }} />
+                    <div className="w-2 sm:w-2.5 bg-blue-300 dark:bg-blue-500/50 rounded-t-sm transition-all duration-300 hover:opacity-80" style={{ height: `${Math.min(100, item.rdv * 20)}%` }} />
+                  </div>
+                ))}
+              </div>
+              <div className="grid grid-cols-7 text-center text-xs text-gray-400 font-medium mt-2">
+                {activityData.map((item) => <span key={item.day}>{item.day}</span>)}
+              </div>
             </div>
-          </div>
+          )}
           <div className="flex items-center gap-5 mt-4">
             <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-blue-600 shrink-0" /><span className="text-xs font-medium text-gray-600 dark:text-slate-300">Sessions</span></div>
             <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-blue-300 dark:bg-blue-500/50 shrink-0" /><span className="text-xs font-medium text-gray-600 dark:text-slate-300">RDV</span></div>

@@ -11,8 +11,11 @@ import {
   Loader2,
   AlertTriangle,
   User,
+  X,
+  CheckCircle2,
+  Key,
 } from 'lucide-react';
-import { signIn } from '../../services/authService';
+import { signIn, submitPasswordResetRequest } from '../../services/authService';
 import { useAuth } from '../../components/auth/AuthProvider';
 
 /**
@@ -33,6 +36,30 @@ function Login() {
   const [selectedRole, setSelectedRole] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+
+  // Password reset ticket modal state
+  const [isResetModalOpen, setIsResetModalOpen] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetSuccess, setResetSuccess] = useState(false);
+  const [resetError, setResetError] = useState(null);
+
+  const handleResetSubmit = async (e) => {
+    e.preventDefault();
+    if (!resetEmail.trim()) {
+      setResetError("Veuillez saisir votre adresse e-mail.");
+      return;
+    }
+    setResetLoading(true);
+    setResetError(null);
+    const { error: reqErr } = await submitPasswordResetRequest(resetEmail);
+    if (reqErr) {
+      setResetError("Erreur lors de l'envoi de la demande : " + reqErr.message);
+    } else {
+      setResetSuccess(true);
+    }
+    setResetLoading(false);
+  };
 
   // Auto redirect if user is already authenticated
   React.useEffect(() => {
@@ -193,13 +220,18 @@ function Login() {
                   />
                   <span className="text-sm text-gray-600 font-medium">Se souvenir de moi</span>
                 </label>
-                <a
-                  href="#forgot"
-                  onClick={(e) => e.preventDefault()}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setResetEmail(email);
+                    setResetSuccess(false);
+                    setResetError(null);
+                    setIsResetModalOpen(true);
+                  }}
                   className="text-sm text-blue-600 font-semibold hover:text-blue-700 hover:underline transition-colors"
                 >
                   Mot de passe oublié ?
-                </a>
+                </button>
               </div>
 
               {/* Solid blue submit button */}
@@ -280,6 +312,112 @@ function Login() {
           </div>
         </div>
       </div>
+
+      {/* ═══════════════════════════════════════════════════════
+          PASSWORD RESET REQUEST MODAL (Ticketing Workflow)
+          ═══════════════════════════════════════════════════════ */}
+      {isResetModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-gray-100 max-w-md w-full p-6 relative animate-in fade-in zoom-in-95 duration-200">
+            <button
+              type="button"
+              onClick={() => setIsResetModalOpen(false)}
+              className="absolute right-4 top-4 w-8 h-8 rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-700 flex items-center justify-center transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                <Key className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">
+                  Réinitialisation de mot de passe
+                </h3>
+                <p className="text-xs text-gray-500">
+                  Demande administrative auprès de votre communauté
+                </p>
+              </div>
+            </div>
+
+            {resetSuccess ? (
+              <div className="space-y-4 text-center py-4">
+                <div className="w-12 h-12 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto">
+                  <CheckCircle2 className="w-6 h-6" />
+                </div>
+                <p className="text-sm font-semibold text-gray-800">
+                  Votre demande a été transmise aux administrateurs !
+                </p>
+                <p className="text-xs text-gray-500 leading-relaxed">
+                  Un administrateur d'Emmaüs Connect vérifiera votre compte et vous communiquera un mot de passe temporaire pour vous reconnecter.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setIsResetModalOpen(false)}
+                  className="w-full py-2.5 rounded-xl bg-blue-600 text-white font-bold text-sm hover:bg-blue-700 transition-colors shadow-sm"
+                >
+                  Fermer
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={handleResetSubmit} className="space-y-4">
+                <p className="text-xs text-gray-600 leading-relaxed">
+                  Saisissez l'adresse e-mail associée à votre compte. Un administrateur générera un mot de passe temporaire dans la rubrique de gestion des utilisateurs.
+                </p>
+
+                {resetError && (
+                  <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-600 text-xs flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 shrink-0" />
+                    <span>{resetError}</span>
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">
+                    Adresse e-mail
+                  </label>
+                  <div className="relative">
+                    <Mail className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <input
+                      type="email"
+                      required
+                      value={resetEmail}
+                      onChange={(e) => setResetEmail(e.target.value)}
+                      placeholder="nom.prenom@emmaus-connect.org"
+                      className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-gray-50 border border-gray-200 text-sm text-gray-900 outline-none focus:border-blue-600 focus:bg-white transition-all"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsResetModalOpen(false)}
+                    className="px-4 py-2 rounded-xl text-xs font-bold text-gray-600 hover:bg-gray-100 transition-colors"
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={resetLoading}
+                    className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-blue-600 text-white font-bold text-xs hover:bg-blue-700 disabled:opacity-50 transition-colors shadow-sm"
+                  >
+                    {resetLoading ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        Envoi...
+                      </>
+                    ) : (
+                      'Envoyer la demande'
+                    )}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

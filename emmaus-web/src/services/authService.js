@@ -170,3 +170,67 @@ export async function registerNewUser(data) {
 export function onAuthStateChange(callback) {
   return supabase.auth.onAuthStateChange(callback);
 }
+
+/**
+ * Submit a password reset ticket request from the Login screen.
+ * @param {string} email
+ * @returns {Promise<{ data: object, error: object }>}
+ */
+export async function submitPasswordResetRequest(email) {
+  const { data, error } = await supabase
+    .from('password_reset_requests')
+    .insert([{ email: email.trim().toLowerCase(), status: 'pending' }])
+    .select()
+    .maybeSingle();
+
+  return { data, error };
+}
+
+/**
+ * Fetch all password reset requests for Admin review.
+ * @returns {Promise<{ data: array, error: object }>}
+ */
+export async function fetchPasswordResetRequests() {
+  const { data, error } = await supabase
+    .from('password_reset_requests')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  return { data, error };
+}
+
+/**
+ * Admin resolves a password reset request by generating/assigning a temporary password.
+ * @param {string} id
+ * @param {string} tempPassword
+ * @returns {Promise<{ data: object, error: object }>}
+ */
+export async function resolvePasswordResetRequest(id, tempPassword) {
+  const { data, error } = await supabase
+    .from('password_reset_requests')
+    .update({
+      status: 'resolved',
+      temp_password: tempPassword,
+      resolved_at: new Date().toISOString(),
+    })
+    .eq('id', id)
+    .select()
+    .maybeSingle();
+
+  return { data, error };
+}
+
+/**
+ * Delete a password reset request.
+ * @param {string} id
+ * @returns {Promise<{ error: object }>}
+ */
+export async function deletePasswordResetRequest(id) {
+  const { error } = await supabase
+    .from('password_reset_requests')
+    .delete()
+    .eq('id', id);
+
+  return { error };
+}
+

@@ -1,9 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import {
   Users, Plus, Mail, Shield, Lock, User, Loader2, X, CheckCircle2,
-  Calendar, Search,
+  Calendar, Search, Key, Trash2, Check, RefreshCw,
 } from 'lucide-react';
-import { fetchAllProfiles, registerNewUser } from '../../services/authService';
+import {
+  fetchAllProfiles,
+  registerNewUser,
+  fetchPasswordResetRequests,
+  resolvePasswordResetRequest,
+  deletePasswordResetRequest,
+} from '../../services/authService';
 
 /**
  * UserManagementTab — Gestion des utilisateurs tab (Admin only).
@@ -18,6 +24,12 @@ function UserManagementTab() {
   const [modalError, setModalError] = useState(null);
   const [successMsg, setSuccessMsg] = useState('');
 
+  // Password reset requests state (Admin Ticketing Workflow)
+  const [resetRequests, setResetRequests] = useState([]);
+  const [resetReqLoading, setResetReqLoading] = useState(true);
+  const [resolvingId, setResolvingId] = useState(null);
+  const [generatedTempPwd, setGeneratedTempPwd] = useState({ id: null, password: '' });
+
   // Form state for New User Modal
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -27,6 +39,7 @@ function UserManagementTab() {
 
   useEffect(() => {
     loadUsers();
+    loadResetRequests();
   }, []);
 
   async function loadUsers() {
@@ -35,6 +48,30 @@ function UserManagementTab() {
     setProfiles(data || []);
     setLoading(false);
   }
+
+  async function loadResetRequests() {
+    setResetReqLoading(true);
+    const { data } = await fetchPasswordResetRequests();
+    setResetRequests(data || []);
+    setResetReqLoading(false);
+  }
+
+  const handleResolveReset = async (reqId) => {
+    setResolvingId(reqId);
+    const randomDigits = Math.floor(1000 + Math.random() * 9000);
+    const tempPwd = `Emmaus-${randomDigits}`;
+    const { error } = await resolvePasswordResetRequest(reqId, tempPwd);
+    if (!error) {
+      setGeneratedTempPwd({ id: reqId, password: tempPwd });
+      await loadResetRequests();
+    }
+    setResolvingId(null);
+  };
+
+  const handleDeleteResetReq = async (reqId) => {
+    await deletePasswordResetRequest(reqId);
+    setResetRequests((prev) => prev.filter((r) => r.id !== reqId));
+  };
 
   const handleCreateUser = async (e) => {
     e.preventDefault();
@@ -211,6 +248,142 @@ function UserManagementTab() {
                           <Calendar className="w-3.5 h-3.5 text-gray-400" />
                           {dateFormatted}
                         </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* ───── Demandes de réinitialisation de mot de passe (Ticketing) ───── */}
+      <div className="bg-white dark:bg-slate-900 rounded-3xl border border-gray-100 dark:border-slate-800 shadow-sm overflow-hidden mt-8">
+        <div className="p-6 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 flex items-center justify-center">
+              <Key className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-gray-900 dark:text-white">
+                Demandes de réinitialisation de mot de passe
+              </h3>
+              <p className="text-xs text-gray-500 dark:text-slate-400">
+                Tickets émis depuis la page de connexion pour déblocage par un administrateur
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={loadResetRequests}
+            title="Actualiser la liste"
+            className="p-2 rounded-xl text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"
+          >
+            <RefreshCw className="w-4 h-4" />
+          </button>
+        </div>
+
+        {resetReqLoading ? (
+          <div className="p-12 text-center text-gray-400 dark:text-slate-500 text-sm flex items-center justify-center gap-2">
+            <Loader2 className="w-5 h-5 animate-spin text-amber-600" />
+            <span>Chargement des demandes...</span>
+          </div>
+        ) : resetRequests.length === 0 ? (
+          <div className="p-12 text-center">
+            <Key className="w-10 h-10 text-gray-300 dark:text-slate-600 mx-auto mb-2" />
+            <p className="text-sm font-semibold text-gray-700 dark:text-slate-300">
+              Aucune demande de réinitialisation en attente.
+            </p>
+            <p className="text-xs text-gray-400 dark:text-slate-500 mt-0.5">
+              Toutes les demandes ont été traitées ou aucun membre n'a émis de ticket.
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-gray-50/75 dark:bg-slate-800/50 text-[11px] font-bold text-gray-400 dark:text-slate-500 uppercase tracking-wider border-b border-gray-100 dark:border-slate-800">
+                  <th className="py-3.5 px-6">Email du compte</th>
+                  <th className="py-3.5 px-6">Statut</th>
+                  <th className="py-3.5 px-6">Date</th>
+                  <th className="py-3.5 px-6">Mot de passe temporaire</th>
+                  <th className="py-3.5 px-6 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-slate-800 text-sm">
+                {resetRequests.map((req) => {
+                  const isResolved = req.status === 'resolved';
+                  const isResolving = resolvingId === req.id;
+                  const tempPwd =
+                    generatedTempPwd.id === req.id
+                      ? generatedTempPwd.password
+                      : req.temp_password;
+
+                  return (
+                    <tr
+                      key={req.id}
+                      className="hover:bg-gray-50/50 dark:hover:bg-slate-800/30 transition-colors"
+                    >
+                      <td className="py-4 px-6 font-semibold text-gray-900 dark:text-white">
+                        {req.email}
+                      </td>
+                      <td className="py-4 px-6">
+                        {isResolved ? (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/60">
+                            <Check className="w-3.5 h-3.5" />
+                            Résolu
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800/60">
+                            En attente
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-4 px-6 text-xs text-gray-500 dark:text-slate-400">
+                        {new Date(req.created_at).toLocaleDateString('fr-FR', {
+                          day: '2-digit',
+                          month: 'short',
+                          year: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </td>
+                      <td className="py-4 px-6">
+                        {tempPwd ? (
+                          <span className="inline-flex items-center gap-2 font-mono text-xs font-bold bg-gray-100 dark:bg-slate-800 text-gray-800 dark:text-slate-200 px-3 py-1 rounded-lg border border-gray-200 dark:border-slate-700 select-all">
+                            {tempPwd}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-gray-400 italic">—</span>
+                        )}
+                      </td>
+                      <td className="py-4 px-6 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          {!isResolved && (
+                            <button
+                              type="button"
+                              onClick={() => handleResolveReset(req.id)}
+                              disabled={isResolving}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/50 font-bold text-xs transition-colors"
+                            >
+                              {isResolving ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <Key className="w-3.5 h-3.5" />
+                              )}
+                              Générer mot de passe temporaire
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteResetReq(req.id)}
+                            title="Supprimer la demande"
+                            className="w-8 h-8 rounded-xl text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 flex items-center justify-center transition-colors"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
