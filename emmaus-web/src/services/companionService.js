@@ -1,4 +1,5 @@
 import supabase from './supabaseClient';
+import { createClient } from '@supabase/supabase-js';
 
 /**
  * companionService — CRUD operations for the compagnons table.
@@ -111,17 +112,56 @@ export async function createCompanion(payload) {
     .from('profiles')
     .upsert({ id: user.id }, { onConflict: 'id', ignoreDuplicates: true });
 
-  // Separate medical data from companion fields
-  const { medical, ...companionData } = payload;
+  // Separate medical data and auth fields from companion fields
+  const { medical, email, password, role = 'Viewer', ...companionData } = payload;
+
+  let newUserId = null;
+  if (email && password) {
+    try {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+      if (supabaseUrl && supabaseAnonKey && supabaseUrl !== 'https://mock.supabase.co') {
+        const tempClient = createClient(supabaseUrl, supabaseAnonKey, {
+          auth: {
+            persistSession: false,
+            autoRefreshToken: false,
+            detectSessionInUrl: false,
+          },
+        });
+
+        const { data: authData, error: signUpErr } = await tempClient.auth.signUp({
+          email,
+          password,
+          options: {
+            data: {
+              first_name: companionData.first_name || '',
+              last_name: companionData.last_name || '',
+              name: `${companionData.first_name || ''} ${companionData.last_name || ''}`.trim(),
+            },
+          },
+        });
+
+        if (signUpErr) {
+          return { data: null, error: signUpErr };
+        }
+        newUserId = authData?.user?.id || null;
+      } else {
+        newUserId = `demo-user-${Date.now()}`;
+      }
+    } catch (err) {
+      console.warn('Auth user creation error:', err);
+    }
+  }
 
   // Clean empty strings from companion data
   const cleanData = Object.fromEntries(
-    Object.entries(companionData).filter(([, v]) => v !== '' && v !== undefined)
+    Object.entries({ ...companionData, email, role }).filter(([, v]) => v !== '' && v !== undefined)
   );
 
   const { data, error } = await supabase
     .from('compagnons')
-    .insert([{ ...cleanData, created_by: user.id }])
+    .insert([{ ...cleanData, user_id: newUserId, created_by: user.id }])
     .select('*, roles(id, name)')
     .single();
 
@@ -147,11 +187,16 @@ export async function createCompanion(payload) {
  * @returns {{ data, error }}
  */
 export async function updateCompanion(id, payload) {
-  const { medical, ...companionData } = payload;
+  const { medical, password, ...companionData } = payload;
+
+  // Clean empty strings from companion data
+  const cleanData = Object.fromEntries(
+    Object.entries(companionData).filter(([, v]) => v !== '' && v !== undefined)
+  );
 
   const { data, error } = await supabase
     .from('compagnons')
-    .update(companionData)
+    .update(cleanData)
     .eq('id', id)
     .select('*, roles(id, name)')
     .single();

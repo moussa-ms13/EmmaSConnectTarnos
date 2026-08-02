@@ -8,6 +8,7 @@ import {
 import { getAllAppointments, deleteAppointment } from '../../services/appointmentService';
 import { fetchCompanions } from '../../services/companionService';
 import AppointmentModal from './AppointmentModal';
+import { useAuth } from '../../components/auth/AuthProvider';
 
 const WEEKDAYS = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
 
@@ -17,6 +18,7 @@ const WEEKDAYS = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
  * and a list of upcoming appointment cards with urgent badges, locations, and actions on the right.
  */
 function AppointmentsList() {
+  const { canAdd, canEdit, canDelete } = useAuth();
   const [appointments, setAppointments] = useState([]);
   const [companions, setCompanions] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -182,14 +184,16 @@ function AppointmentsList() {
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={openCreateModal}
-          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-semibold shadow-md shadow-blue-600/25 hover:bg-blue-700 active:scale-[0.98] transition-all shrink-0"
-        >
-          <Plus className="w-4 h-4" />
-          Planifier un RDV
-        </button>
+        {canAdd && (
+          <button
+            type="button"
+            onClick={openCreateModal}
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-semibold shadow-md shadow-blue-600/25 hover:bg-blue-700 active:scale-[0.98] transition-all shrink-0"
+          >
+            <Plus className="w-4 h-4" />
+            Planifier un RDV
+          </button>
+        )}
       </div>
 
       {/* ───── Main Layout Grid ───── */}
@@ -346,14 +350,16 @@ function AppointmentsList() {
               )}
             </div>
 
-            <button
-              type="button"
-              onClick={openCreateModal}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-50 text-blue-700 hover:bg-blue-100 text-xs font-bold transition-colors"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              Planifier
-            </button>
+            {canAdd && (
+              <button
+                type="button"
+                onClick={openCreateModal}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-50 text-blue-700 hover:bg-blue-100 text-xs font-bold transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Planifier
+              </button>
+            )}
           </div>
 
           {/* List Content */}
@@ -446,22 +452,26 @@ function AppointmentsList() {
 
                       {/* Actions */}
                       <div className="flex items-center gap-1 mt-1">
-                        <button
-                          type="button"
-                          onClick={() => openEditModal(apt)}
-                          className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-blue-600 transition-colors"
-                          title="Modifier"
-                        >
-                          <Edit3 className="w-4 h-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(apt.id)}
-                          className="p-1.5 rounded-lg text-gray-400 hover:bg-red-50 hover:text-red-600 transition-colors"
-                          title="Supprimer"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        {canEdit && (
+                          <button
+                            type="button"
+                            onClick={() => openEditModal(apt)}
+                            className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-blue-600 transition-colors"
+                            title="Modifier"
+                          >
+                            <Edit3 className="w-4 h-4" />
+                          </button>
+                        )}
+                        {canDelete && (
+                          <button
+                            type="button"
+                            onClick={() => handleDelete(apt.id)}
+                            className="p-1.5 rounded-lg text-gray-400 hover:bg-red-50 hover:text-red-600 transition-colors"
+                            title="Supprimer"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>

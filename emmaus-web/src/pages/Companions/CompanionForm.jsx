@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   X, User, Mail, Phone, Save, Loader2, ShieldCheck, ChevronDown,
   MapPin, Calendar, Droplets, Stethoscope, AlertCircle, Activity,
-  Briefcase, Camera, Upload,
+  Briefcase, Camera, Upload, Lock,
 } from 'lucide-react';
 import { fetchRoles, uploadAvatar } from '../../services/companionService';
 
@@ -78,10 +78,12 @@ function CompanionForm({ companion, onSave, onClose }) {
     gender: '',
     date_of_birth: '',
     email: '',
+    password: '',
     phone: '',
     address: '',
     postal_code: '',
     city: '',
+    role: 'Viewer',
     role_id: '',
     profession: '',
     avatar_url: '',
@@ -126,10 +128,12 @@ function CompanionForm({ companion, onSave, onClose }) {
         gender: companion.gender || '',
         date_of_birth: companion.date_of_birth || '',
         email: companion.email || '',
+        password: '',
         phone: companion.phone || '',
         address: companion.address || '',
         postal_code: companion.postal_code || '',
         city: companion.city || '',
+        role: companion.role || companion.roles?.name || 'Viewer',
         role_id: companion.role_id || '',
         profession: companion.profession || '',
         avatar_url: companion.avatar_url || '',
@@ -183,6 +187,7 @@ function CompanionForm({ companion, onSave, onClose }) {
 
       const payload = { ...formData, avatar_url: uploadedUrl };
       if (!payload.role_id) delete payload.role_id;
+      if (!payload.password) delete payload.password;
 
       // Attach medical data as a nested object
       payload.medical = { ...medicalData };
@@ -199,74 +204,87 @@ function CompanionForm({ companion, onSave, onClose }) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl mx-4 overflow-hidden max-h-[90vh] flex flex-col">
         {/* ───── Header ───── */}
-        <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100 bg-gray-50/60 shrink-0">
-          <div>
-            <h3 className="text-lg font-bold text-gray-900">
-              {isEditing ? 'Modifier le compagnon' : 'Ajouter un compagnon'}
-            </h3>
-            <p className="text-sm text-gray-500 mt-0.5">
-              {isEditing
-                ? 'Mettez à jour les informations du compagnon.'
-                : 'Remplissez les informations pour créer un nouveau compagnon.'}
-            </p>
+        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold">
+              <User className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-gray-900">
+                {isEditing ? 'Modifier le compagnon' : 'Ajouter un compagnon'}
+              </h3>
+              <p className="text-xs text-gray-500">
+                Renseignez les informations et identifiants de connexion.
+              </p>
+            </div>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
-            aria-label="Fermer"
+            className="p-2 rounded-xl hover:bg-gray-200/60 text-gray-400 hover:text-gray-600 transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* ───── Form body (scrollable) ───── */}
-        <form onSubmit={handleSubmit} className="px-6 py-5 space-y-5 overflow-y-auto flex-1">
-          {/* Error message */}
+        {/* ───── Form Body ───── */}
+        <form onSubmit={handleSubmit} className="p-6 overflow-y-auto space-y-6 flex-1">
           {error && (
-            <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700">
+            <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm font-medium">
               {error}
             </div>
           )}
 
-          {/* ════════════ Section: Informations personnelles ════════════ */}
+          {/* ════════════ Section: Identité & Auth ════════════ */}
           <div>
             <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-2">
               <User className="w-3.5 h-3.5" />
-              Informations personnelles
+              Identité & Rôle (Authentification)
             </h4>
 
-            {/* Profile Picture Upload Preview */}
-            <div className="flex items-center gap-4 mb-4 p-3 rounded-xl bg-gray-50 border border-gray-100">
-              <div className="relative w-16 h-16 rounded-full bg-gray-200 overflow-hidden flex items-center justify-center shrink-0 border-2 border-white shadow-sm">
+            {/* Avatar upload */}
+            <div className="flex items-center gap-4 mb-4 pb-4 border-b border-gray-100">
+              <div className="relative group">
                 {avatarPreview ? (
-                  <img src={avatarPreview} alt="Avatar preview" className="w-full h-full object-cover" />
-                ) : (
-                  <User className="w-8 h-8 text-gray-400" />
-                )}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-gray-800">Photo de profil</p>
-                <p className="text-xs text-gray-500 mb-2">JPG, PNG ou WEBP (max. 5 Mo)</p>
-                <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-gray-200 text-xs font-semibold text-gray-700 hover:bg-gray-100 cursor-pointer transition-colors shadow-sm">
-                  <Camera className="w-3.5 h-3.5 text-gray-500" />
-                  <span>{avatarPreview ? 'Changer la photo' : 'Ajouter une photo'}</span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleFileChange}
-                    className="hidden"
+                  <img
+                    src={avatarPreview}
+                    alt="Avatar preview"
+                    className="w-16 h-16 rounded-2xl object-cover border border-gray-200 shadow-sm"
                   />
+                ) : (
+                  <div className="w-16 h-16 rounded-2xl bg-gray-100 border border-gray-200 flex items-center justify-center text-gray-400">
+                    <Camera className="w-6 h-6" />
+                  </div>
+                )}
+                <label
+                  htmlFor="cf-avatar"
+                  className="absolute inset-0 bg-black/40 rounded-2xl flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer text-white"
+                >
+                  <Upload className="w-5 h-5" />
                 </label>
+                <input
+                  id="cf-avatar"
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFileChange}
+                  className="hidden"
+                />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-gray-700">Photo de profil</p>
+                <p className="text-xs text-gray-400">PNG, JPG ou WEBP (max 2 Mo)</p>
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-              <InputField id="cf-first-name" name="first_name" label="Prénom" icon={User} required placeholder="Prénom" value={formData.first_name} onChange={handleChange} half />
-              <InputField id="cf-last-name" name="last_name" label="Nom" icon={User} required placeholder="Nom de famille" value={formData.last_name} onChange={handleChange} half />
+              {/* First Name */}
+              <InputField id="cf-firstname" name="first_name" label="Prénom" icon={User} placeholder="Jean" value={formData.first_name} onChange={handleChange} required half />
 
-              {/* Gender dropdown */}
-              <div>
+              {/* Last Name */}
+              <InputField id="cf-lastname" name="last_name" label="Nom" icon={User} placeholder="Dupont" value={formData.last_name} onChange={handleChange} required half />
+
+              {/* Gender select */}
+              <div className="col-span-1">
                 <label htmlFor="cf-gender" className="block text-sm font-semibold text-gray-700 mb-1.5">
                   Genre
                 </label>
@@ -294,30 +312,52 @@ function CompanionForm({ companion, onSave, onClose }) {
               {/* Profession */}
               <InputField id="cf-profession" name="profession" label="Profession" icon={Briefcase} placeholder="Menuisier, Cuisinier, Chauffeur..." value={formData.profession} onChange={handleChange} half />
 
+              {/* Email */}
+              <InputField
+                id="cf-email"
+                name="email"
+                label="E-mail (Identifiant de connexion)"
+                icon={Mail}
+                type="email"
+                placeholder="jean.dupont@email.fr"
+                value={formData.email}
+                onChange={handleChange}
+                required
+                half
+              />
+
+              {/* Password */}
+              <InputField
+                id="cf-password"
+                name="password"
+                label={isEditing ? "Nouveau mot de passe (optionnel)" : "Mot de passe"}
+                icon={Lock}
+                type="password"
+                placeholder="••••••••"
+                value={formData.password}
+                onChange={handleChange}
+                required={!isEditing}
+                half
+              />
+
               {/* Role select */}
               <div className="col-span-2">
                 <label htmlFor="cf-role" className="block text-sm font-semibold text-gray-700 mb-1.5">
-                  Rôle <span className="text-red-500">*</span>
+                  Rôle d'accès <span className="text-red-500">*</span>
                 </label>
                 <div className="relative">
                   <ShieldCheck className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                   <select
                     id="cf-role"
-                    name="role_id"
-                    value={formData.role_id}
+                    name="role"
+                    value={formData.role}
                     onChange={handleChange}
-                    disabled={loadingRoles}
-                    className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-gray-200 bg-gray-50 text-sm text-gray-900 outline-none appearance-none cursor-pointer transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:bg-white disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-gray-200 bg-gray-50 text-sm text-gray-900 outline-none appearance-none cursor-pointer transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:bg-white"
                     required
                   >
-                    <option value="" disabled>
-                      {loadingRoles ? 'Chargement des rôles...' : 'Sélectionner un rôle'}
-                    </option>
-                    {roles.map((role) => (
-                      <option key={role.id} value={role.id}>
-                        {ROLE_LABELS[role.name] || role.name}
-                      </option>
-                    ))}
+                    <option value="Admin">Admin — Contrôle total (Voir, Ajouter, Modifier, Supprimer)</option>
+                    <option value="Editor">Editor / Manager — Voir, Ajouter et Modifier (Pas de suppression)</option>
+                    <option value="Viewer">Viewer — Lecture seule (Accès en consultation)</option>
                   </select>
                   <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
                 </div>

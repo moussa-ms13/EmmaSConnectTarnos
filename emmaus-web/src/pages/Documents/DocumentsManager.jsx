@@ -11,6 +11,7 @@ import {
   uploadDocument,
 } from '../../services/documentService';
 import { fetchCompanions } from '../../services/companionService';
+import { useAuth } from '../../components/auth/AuthProvider';
 
 const DOCUMENT_TYPES = ['Identité', 'Médical', 'Administratif', 'Formation', 'Autre'];
 
@@ -30,6 +31,7 @@ function formatFileSize(bytes) {
  * Strictly uses real Supabase database rows with zero mock/fallback data.
  */
 function DocumentsManager() {
+  const { canAdd, canDelete } = useAuth();
   const [documents, setDocuments] = useState([]);
   const [companions, setCompanions] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -189,10 +191,11 @@ function DocumentsManager() {
       </div>
 
       {/* ───── Top Drag & Drop Upload Zone ───── */}
-      <form
-        onSubmit={handleUploadSubmit}
-        onDragOver={(e) => e.preventDefault()}
-        onDrop={handleFileDrop}
+      {canAdd && (
+        <form
+          onSubmit={handleUploadSubmit}
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={handleFileDrop}
         className="bg-white rounded-2xl border-2 border-dashed border-gray-300 hover:border-emerald-500 p-6 transition-all shadow-sm flex flex-col md:flex-row items-center justify-between gap-6"
       >
         <div className="flex items-center gap-4 flex-1">
@@ -265,6 +268,7 @@ function DocumentsManager() {
           </button>
         </div>
       </form>
+      )}
 
       {error && (
         <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-sm text-red-700">
@@ -396,14 +400,16 @@ function DocumentsManager() {
                           >
                             <Download className="w-4 h-4" />
                           </a>
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteDoc(doc.id, doc.file_url)}
-                            className="p-2 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-                            title="Supprimer"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          {canDelete && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteDoc(doc.id, doc.file_url)}
+                              className="p-2 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                              title="Supprimer"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>

@@ -9,6 +9,7 @@ import {
   deleteAchievement,
 } from '../../services/achievementService';
 import { fetchCompanions } from '../../services/companionService';
+import { useAuth } from '../../components/auth/AuthProvider';
 
 const CATEGORY_OPTIONS = ['Excellence', 'Engagement', 'Formation', 'Innovation'];
 const BADGE_LEVELS = ['Or', 'Argent', 'Bronze', 'Certificat', 'Expert', 'Spécial'];
@@ -19,6 +20,7 @@ const BADGE_LEVELS = ['Or', 'Argent', 'Bronze', 'Certificat', 'Expert', 'Spécia
  * Strictly uses real Supabase database rows with zero mock/fallback data.
  */
 function AchievementsList() {
+  const { canAdd, canDelete } = useAuth();
   const [achievements, setAchievements] = useState([]);
   const [companions, setCompanions] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -159,14 +161,16 @@ function AchievementsList() {
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={() => setShowModal(true)}
-          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold shadow-md shadow-amber-500/25 transition-all shrink-0"
-        >
-          <Plus className="w-4 h-4" />
-          Décerner une réalisation
-        </button>
+        {canAdd && (
+          <button
+            type="button"
+            onClick={() => setShowModal(true)}
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold shadow-md shadow-amber-500/25 transition-all shrink-0"
+          >
+            <Plus className="w-4 h-4" />
+            Décerner une réalisation
+          </button>
+        )}
       </div>
 
       {/* ───── Top Dark Blue Statistics Banner ───── */}
@@ -297,14 +301,16 @@ function AchievementsList() {
                     </div>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => handleDelete(item.id)}
-                    className="p-2 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-                    title="Supprimer la réalisation"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  {canDelete && (
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(item.id)}
+                      className="p-2 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                      title="Supprimer la réalisation"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
                 </div>
               </div>
             );

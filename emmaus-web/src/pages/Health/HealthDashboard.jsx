@@ -9,6 +9,7 @@ import { fetchCompanions } from '../../services/companionService';
 import { fetchCompanionHealthData } from '../../services/healthService';
 import MedicalRecordForm from './MedicalRecordForm';
 import ConsultationForm from './ConsultationForm';
+import { useAuth } from '../../components/auth/AuthProvider';
 
 /**
  * HealthDashboard — Companion medical overview page (Santé module).
@@ -17,6 +18,7 @@ import ConsultationForm from './ConsultationForm';
  * and interactive modals to edit the medical profile and add consultations.
  */
 function HealthDashboard() {
+  const { canAdd, canEdit } = useAuth();
   const [companions, setCompanions] = useState([]);
   const [selectedId, setSelectedId] = useState('');
   const [medicalRecord, setMedicalRecord] = useState(null);
@@ -126,22 +128,26 @@ function HealthDashboard() {
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
           {selectedId && !loadingData && (
             <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setShowMedModal(true)}
-                className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-gray-200 bg-white text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50 active:scale-[0.98] transition-all"
-              >
-                <Edit3 className="w-4 h-4 text-blue-600" />
-                Modifier le dossier
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowConsModal(true)}
-                className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-semibold shadow-md shadow-blue-600/25 hover:bg-blue-700 active:scale-[0.98] transition-all"
-              >
-                <Plus className="w-4 h-4" />
-                Nouvelle consultation
-              </button>
+              {canEdit && (
+                <button
+                  type="button"
+                  onClick={() => setShowMedModal(true)}
+                  className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-gray-200 bg-white text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50 active:scale-[0.98] transition-all"
+                >
+                  <Edit3 className="w-4 h-4 text-blue-600" />
+                  Modifier le dossier
+                </button>
+              )}
+              {canAdd && (
+                <button
+                  type="button"
+                  onClick={() => setShowConsModal(true)}
+                  className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-semibold shadow-md shadow-blue-600/25 hover:bg-blue-700 active:scale-[0.98] transition-all"
+                >
+                  <Plus className="w-4 h-4" />
+                  Nouvelle consultation
+                </button>
+              )}
             </div>
           )}
 
@@ -255,14 +261,16 @@ function HealthDashboard() {
                     <Activity className="w-4.5 h-4.5 text-amber-500" />
                     <h3 className="text-sm font-bold text-gray-900">Pathologies chroniques</h3>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setShowMedModal(true)}
-                    className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700"
-                  >
-                    <Edit3 className="w-3.5 h-3.5" />
-                    Modifier
-                  </button>
+                  {canEdit && (
+                    <button
+                      type="button"
+                      onClick={() => setShowMedModal(true)}
+                      className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700"
+                    >
+                      <Edit3 className="w-3.5 h-3.5" />
+                      Modifier
+                    </button>
+                  )}
                 </div>
                 <div className="p-5">
                   {medicalRecord?.pathologiesList && medicalRecord.pathologiesList.length > 0 ? (
@@ -287,14 +295,16 @@ function HealthDashboard() {
                     <AlertCircle className="w-4.5 h-4.5 text-red-500" />
                     <h3 className="text-sm font-bold text-gray-900">Allergies connues</h3>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setShowMedModal(true)}
-                    className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700"
-                  >
-                    <Edit3 className="w-3.5 h-3.5" />
-                    Modifier
-                  </button>
+                  {canEdit && (
+                    <button
+                      type="button"
+                      onClick={() => setShowMedModal(true)}
+                      className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700"
+                    >
+                      <Edit3 className="w-3.5 h-3.5" />
+                      Modifier
+                    </button>
+                  )}
                 </div>
                 <div className="p-5">
                   {medicalRecord?.allergiesList && medicalRecord.allergiesList.length > 0 ? (
@@ -320,14 +330,16 @@ function HealthDashboard() {
                       <FileText className="w-4.5 h-4.5 text-blue-500" />
                       <h3 className="text-sm font-bold text-gray-900">Résumé général</h3>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setShowMedModal(true)}
-                      className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700"
-                    >
-                      <Edit3 className="w-3.5 h-3.5" />
-                      Modifier
-                    </button>
+                    {canEdit && (
+                      <button
+                        type="button"
+                        onClick={() => setShowMedModal(true)}
+                        className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700"
+                      >
+                        <Edit3 className="w-3.5 h-3.5" />
+                        Modifier
+                      </button>
+                    )}
                   </div>
                   <div className="p-5 text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
                     {medicalRecord.health_summary}
@@ -346,14 +358,16 @@ function HealthDashboard() {
                     {consultations.length}
                   </span>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setShowConsModal(true)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 text-xs font-semibold transition-colors"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  Nouvelle consultation
-                </button>
+                {canAdd && (
+                  <button
+                    type="button"
+                    onClick={() => setShowConsModal(true)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 text-xs font-semibold transition-colors"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Nouvelle consultation
+                  </button>
+                )}
               </div>
 
               <div className="p-6">

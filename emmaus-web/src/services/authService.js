@@ -38,11 +38,46 @@ export async function getSession() {
 }
 
 /**
- * Fetch the profile (with role name) for a given user ID.
+ * Fetch the profile (with role name) for a given user ID or email.
+ * Checks the 'compagnons' table first as Compagnon is the core entity.
  * @param {string} userId
+ * @param {string} [userEmail]
  * @returns {{ data, error }}
  */
-export async function fetchUserProfile(userId) {
+export async function fetchUserProfile(userId, userEmail) {
+  // 1. First check compagnons table by user_id
+  let { data: compData, error: compErr } = await supabase
+    .from('compagnons')
+    .select('*, roles(id, name)')
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  // If not found by user_id, check by email and link user_id automatically
+  if (!compData && userEmail) {
+    const { data: compByEmail } = await supabase
+      .from('compagnons')
+      .select('*, roles(id, name)')
+      .eq('email', userEmail)
+      .maybeSingle();
+    if (compByEmail) {
+      compData = compByEmail;
+      await supabase.from('compagnons').update({ user_id: userId }).eq('id', compData.id);
+    }
+  }
+
+  if (compData) {
+    const resolvedRole = compData.role || compData.roles?.name || 'Viewer';
+    return {
+      data: {
+        ...compData,
+        role: resolvedRole,
+        is_compagnon: true,
+      },
+      error: null,
+    };
+  }
+
+  // 2. Fallback to profiles table for legacy/admin users
   const { data, error } = await supabase
     .from('profiles')
     .select('*, roles(id, name)')

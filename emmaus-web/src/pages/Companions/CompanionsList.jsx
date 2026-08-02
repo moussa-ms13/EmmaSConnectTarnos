@@ -40,7 +40,7 @@ const ROLE_CONFIG = {
  * Displays a searchable, paginated data table with CRUD actions.
  */
 function CompanionsList() {
-  const { user } = useAuth();
+  const { user, canAdd, canEdit, canDelete } = useAuth();
   const navigate = useNavigate();
 
   // Data state
@@ -214,14 +214,16 @@ function CompanionsList() {
             </p>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={openCreate}
-          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-semibold shadow-md shadow-blue-600/25 hover:bg-blue-700 active:scale-[0.98] transition-all duration-200"
-        >
-          <Plus className="w-4.5 h-4.5" />
-          Ajouter un compagnon
-        </button>
+        {canAdd && (
+          <button
+            type="button"
+            onClick={openCreate}
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-semibold shadow-md shadow-blue-600/25 hover:bg-blue-700 active:scale-[0.98] transition-all duration-200"
+          >
+            <Plus className="w-4.5 h-4.5" />
+            Ajouter un compagnon
+          </button>
+        )}
       </div>
 
       {/* ───── Search Bar ───── */}
@@ -401,40 +403,44 @@ function CompanionsList() {
                             >
                               <Eye className="w-4 h-4" />
                             </button>
-                            <button
-                              type="button"
-                              onClick={() => openEdit(companion)}
-                              className="p-2 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
-                              aria-label={`Modifier ${companion.first_name}`}
-                            >
-                              <Edit3 className="w-4 h-4" />
-                            </button>
-                            {deletingId === companion.id ? (
-                              <div className="flex items-center gap-1">
-                                <button
-                                  type="button"
-                                  onClick={() => handleDelete(companion.id)}
-                                  className="px-2.5 py-1.5 rounded-lg bg-red-600 text-white text-xs font-semibold hover:bg-red-700 transition-colors"
-                                >
-                                  Confirmer
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => setDeletingId(null)}
-                                  className="px-2.5 py-1.5 rounded-lg bg-gray-100 text-gray-600 text-xs font-semibold hover:bg-gray-200 transition-colors"
-                                >
-                                  Annuler
-                                </button>
-                              </div>
-                            ) : (
+                            {canEdit && (
                               <button
                                 type="button"
-                                onClick={() => setDeletingId(companion.id)}
-                                className="p-2 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-                                aria-label={`Supprimer ${companion.first_name}`}
+                                onClick={() => openEdit(companion)}
+                                className="p-2 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                                aria-label={`Modifier ${companion.first_name}`}
                               >
-                                <Trash2 className="w-4 h-4" />
+                                <Edit3 className="w-4 h-4" />
                               </button>
+                            )}
+                            {canDelete && (
+                              deletingId === companion.id ? (
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDelete(companion.id)}
+                                    className="px-2.5 py-1.5 rounded-lg bg-red-600 text-white text-xs font-semibold hover:bg-red-700 transition-colors"
+                                  >
+                                    Confirmer
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setDeletingId(null)}
+                                    className="px-2.5 py-1.5 rounded-lg bg-gray-100 text-gray-600 text-xs font-semibold hover:bg-gray-200 transition-colors"
+                                  >
+                                    Annuler
+                                  </button>
+                                </div>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => setDeletingId(companion.id)}
+                                  className="p-2 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                                  aria-label={`Supprimer ${companion.first_name}`}
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              )
                             )}
                           </div>
                         </td>

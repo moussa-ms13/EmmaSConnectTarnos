@@ -73,7 +73,7 @@ function StatusBadge({ status }) {
  * User sees their own requests and a creation form.
  */
 function VacationsList() {
-  const { user, profile } = useAuth();
+  const { user, profile, canAdd, canEdit, canDelete } = useAuth();
   const roleName = profile?.roles?.name || 'user';
   const isAdmin = roleName === 'admin';
 
@@ -191,7 +191,7 @@ function VacationsList() {
         </div>
 
         {/* Add button (user view only) */}
-        {!isAdmin && (
+        {!isAdmin && canAdd && (
           <button
             type="button"
             onClick={() => setShowForm(!showForm)}
@@ -204,7 +204,7 @@ function VacationsList() {
       </div>
 
       {/* ───── Request Form (user view) ───── */}
-      {!isAdmin && showForm && (
+      {!isAdmin && canAdd && showForm && (
         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/60">
             <h3 className="text-sm font-bold text-gray-900">Nouvelle demande de congé</h3>
@@ -464,7 +464,7 @@ function VacationsList() {
                       {isAdmin && (
                         <td className="px-6 py-4">
                           <div className="flex items-center justify-end gap-2">
-                            {isPending && !isProcessing && (
+                            {isPending && !isProcessing && canEdit && (
                               <>
                                 <button
                                   type="button"

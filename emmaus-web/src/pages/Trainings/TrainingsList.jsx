@@ -14,12 +14,14 @@ import {
   updateFormationProgress,
 } from '../../services/trainingService';
 import { fetchCompanions } from '../../services/companionService';
+import { useAuth } from '../../components/auth/AuthProvider';
 
 /**
  * TrainingsList — Formations & modules d'apprentissage module.
  * Strictly uses real Supabase database rows with zero mock/fallback data.
  */
 function TrainingsList() {
+  const { canAdd, canEdit, canDelete } = useAuth();
   const [formations, setFormations] = useState([]);
   const [assignments, setAssignments] = useState([]);
   const [companions, setCompanions] = useState([]);
@@ -182,19 +184,21 @@ function TrainingsList() {
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={() => {
-            setEditCourse(null);
-            setNewTitle('');
-            setNewDuration(10);
-            setShowCreateModal(true);
-          }}
-          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-purple-600 text-white text-sm font-semibold shadow-md shadow-purple-600/25 hover:bg-purple-700 transition-all shrink-0"
-        >
-          <Plus className="w-4 h-4" />
-          Nouvelle formation
-        </button>
+        {canAdd && (
+          <button
+            type="button"
+            onClick={() => {
+              setEditCourse(null);
+              setNewTitle('');
+              setNewDuration(10);
+              setShowCreateModal(true);
+            }}
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-purple-600 text-white text-sm font-semibold shadow-md shadow-purple-600/25 hover:bg-purple-700 transition-all shrink-0"
+          >
+            <Plus className="w-4 h-4" />
+            Nouvelle formation
+          </button>
+        )}
       </div>
 
       {/* ───── Top Stats Cards ───── */}
@@ -266,22 +270,26 @@ function TrainingsList() {
                     <div className="flex items-center gap-2">
                       {getStatusBadge(course.status, prog)}
                       <div className="flex items-center gap-1 border-l border-gray-200 pl-2">
-                        <button
-                          type="button"
-                          onClick={() => handleEditClick(course)}
-                          className="p-1.5 rounded-lg text-gray-400 hover:text-purple-600 hover:bg-purple-50 transition-colors"
-                          title="Modifier la formation"
-                        >
-                          <Edit3 className="w-4 h-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteClick(course.id)}
-                          className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-                          title="Supprimer la formation"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        {canEdit && (
+                          <button
+                            type="button"
+                            onClick={() => handleEditClick(course)}
+                            className="p-1.5 rounded-lg text-gray-400 hover:text-purple-600 hover:bg-purple-50 transition-colors"
+                            title="Modifier la formation"
+                          >
+                            <Edit3 className="w-4 h-4" />
+                          </button>
+                        )}
+                        {canDelete && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteClick(course.id)}
+                            className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                            title="Supprimer la formation"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>

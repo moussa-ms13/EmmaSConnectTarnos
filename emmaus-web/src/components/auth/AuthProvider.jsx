@@ -29,13 +29,13 @@ function AuthProvider({ children }) {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  async function loadProfile(userId) {
+  async function loadProfile(userId, userEmail) {
     if (!userId) {
       setProfile(null);
       return;
     }
     try {
-      const { data, error } = await fetchUserProfile(userId);
+      const { data, error } = await fetchUserProfile(userId, userEmail);
       if (error) {
         console.warn('Could not load user profile (may not exist yet):', error.message);
         setProfile(null);
@@ -57,7 +57,7 @@ function AuthProvider({ children }) {
         const currentUser = data?.session?.user ?? null;
         setUser(currentUser);
         if (currentUser) {
-          await loadProfile(currentUser.id);
+          await loadProfile(currentUser.id, currentUser.email);
         }
       })
       .catch((err) => {
@@ -71,7 +71,7 @@ function AuthProvider({ children }) {
       const updatedUser = session?.user ?? null;
       setUser(updatedUser);
       if (updatedUser) {
-        loadProfile(updatedUser.id);
+        loadProfile(updatedUser.id, updatedUser.email);
       } else {
         setProfile(null);
       }
@@ -83,13 +83,22 @@ function AuthProvider({ children }) {
     };
   }, []);
 
-  // Compute RBAC helper booleans
-  const roleName = profile?.roles?.name || profile?.role || 'admin';
-  const isCompagnon = roleName.toLowerCase() === 'compagnon';
-  const isAdmin = roleName.toLowerCase() === 'admin';
+  // Compute RBAC helper booleans and permissions
+  const rawRole = profile?.role || profile?.roles?.name || 'Admin';
+  const roleName = rawRole;
+  const normRole = String(rawRole).toLowerCase();
+
+  const isAdmin = normRole === 'admin' || normRole === 'administrateur';
+  const isEditor = ['editor', 'manager', 'éditeur', 'user', 'utilisateur'].includes(normRole);
+  const isViewer = ['viewer', 'lecteur', 'read', 'compagnon'].includes(normRole);
+
+  const canAdd = isAdmin || isEditor;
+  const canEdit = isAdmin || isEditor;
+  const canDelete = isAdmin;
+  const isCompagnon = Boolean(profile?.is_compagnon);
 
   return (
-    <AuthContext.Provider value={{ user, profile, loading, roleName, isCompagnon, isAdmin }}>
+    <AuthContext.Provider value={{ user, profile, loading, roleName, isCompagnon, isAdmin, isEditor, isViewer, canAdd, canEdit, canDelete }}>
       {children}
     </AuthContext.Provider>
   );

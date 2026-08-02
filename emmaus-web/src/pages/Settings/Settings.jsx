@@ -1,9 +1,8 @@
 import React, { useState } from 'react';
-import { Settings as SettingsIcon, User, Palette, Users, Sliders, Shield } from 'lucide-react';
+import { Settings as SettingsIcon, User, Palette, Sliders, Shield } from 'lucide-react';
 import { useAuth } from '../../components/auth/AuthProvider';
 import ProfileTab from './ProfileTab';
 import AppearanceTab from './AppearanceTab';
-import UserManagementTab from './UserManagementTab';
 import GeneralTab from './GeneralTab';
 
 /**
@@ -32,17 +31,6 @@ function Settings() {
       icon: Palette,
       description: "Mode sombre et thèmes d'affichage",
     },
-    ...(isAdmin
-      ? [
-          {
-            id: 'users',
-            label: 'Gestion des utilisateurs',
-            icon: Users,
-            badge: 'Admin',
-            description: 'Comptes et droits des encadrants',
-          },
-        ]
-      : []),
     {
       id: 'general',
       label: 'Général',
@@ -99,21 +87,19 @@ function Settings() {
               key={tab.id}
               type="button"
               onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2.5 px-5 py-3 rounded-xl text-sm font-semibold transition-all shrink-0 ${
-                isActive
+              className={`flex items-center gap-2.5 px-5 py-3 rounded-xl text-sm font-semibold transition-all shrink-0 ${isActive
                   ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-600/20'
                   : 'text-gray-600 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-slate-800/50'
-              }`}
+                }`}
             >
               <Icon className={`w-4 h-4 ${isActive ? 'text-white' : 'text-gray-400 dark:text-slate-400'}`} />
               <span>{tab.label}</span>
               {tab.badge && (
                 <span
-                  className={`ml-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                    isActive
+                  className={`ml-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${isActive
                       ? 'bg-white/20 text-white'
                       : 'bg-purple-100 text-purple-700 dark:bg-purple-900/60 dark:text-purple-300'
-                  }`}
+                    }`}
                 >
                   {tab.badge}
                 </span>
@@ -129,7 +115,6 @@ function Settings() {
       <div className="pt-2 transition-all duration-200">
         {activeTab === 'profile' && <ProfileTab user={user} profile={profile} />}
         {activeTab === 'appearance' && <AppearanceTab />}
-        {activeTab === 'users' && isAdmin && <UserManagementTab />}
         {activeTab === 'general' && <GeneralTab />}
       </div>
     </div>
