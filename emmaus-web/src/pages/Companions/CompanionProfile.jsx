@@ -19,6 +19,7 @@ import {
   AlertTriangle,
   TrendingUp,
   Activity,
+  Loader2,
 } from 'lucide-react';
 import { getCompanionById, updateCompanion } from '../../services/companionService';
 import { useAuth } from '../../components/auth/AuthProvider';
@@ -59,11 +60,28 @@ const MOCK_STATS = {
 };
 
 /**
- * Helper: compute age from date string.
+ * Helper: safely convert any value (object, array, string, number) to a string for rendering.
+ * Prevents React "Objects are not valid as a React child" crashes.
  */
-function computeAge(dateStr) {
-  if (!dateStr || typeof dateStr !== 'string') return null;
-  const birth = new Date(dateStr);
+function toSafeString(val, fallback = '') {
+  if (val === null || val === undefined) return fallback;
+  if (typeof val === 'string') return val.trim() || fallback;
+  if (typeof val === 'number' || typeof val === 'boolean') return String(val);
+  if (typeof val === 'object') {
+    if (Array.isArray(val)) {
+      return val.map((item) => toSafeString(item)).filter(Boolean).join(', ') || fallback;
+    }
+    return String(val.name || val.label || val.value || val.first_name || val.title || fallback);
+  }
+  return String(val);
+}
+
+/**
+ * Helper: compute age from date string or Date object.
+ */
+function computeAge(dateVal) {
+  if (!dateVal) return null;
+  const birth = new Date(dateVal);
   if (isNaN(birth.getTime())) return null;
   const today = new Date();
   let age = today.getFullYear() - birth.getFullYear();
@@ -73,20 +91,42 @@ function computeAge(dateStr) {
 }
 
 /**
- * Helper: format date to French locale.
+ * Helper: format date (string or Date object) to French locale safely.
  */
-function formatDate(dateStr) {
-  if (!dateStr) return '—';
+function formatDate(dateVal) {
+  if (!dateVal) return '—';
   try {
-    const d = new Date(dateStr);
-    if (isNaN(d.getTime())) return typeof dateStr === 'string' ? dateStr : '—';
+    const d = new Date(dateVal);
+    if (isNaN(d.getTime())) {
+      return typeof dateVal === 'string' ? dateVal : '—';
+    }
     return d.toLocaleDateString('fr-FR', {
       day: 'numeric',
       month: 'long',
       year: 'numeric',
     });
   } catch {
-    return typeof dateStr === 'string' ? dateStr : '—';
+    return typeof dateVal === 'string' ? dateVal : '—';
+  }
+}
+
+/**
+ * Helper: format date/time (string or Date object) safely.
+ */
+function formatDateTime(dateVal) {
+  if (!dateVal) return '—';
+  try {
+    const d = new Date(dateVal);
+    if (isNaN(d.getTime())) {
+      return typeof dateVal === 'string' ? dateVal : '—';
+    }
+    return d.toLocaleDateString('fr-FR', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+    });
+  } catch {
+    return typeof dateVal === 'string' ? dateVal : '—';
   }
 }
 
@@ -166,40 +206,38 @@ function CompanionProfile() {
   const c = companion || {};
   const computedAge = computeAge(c?.date_of_birth || c?.date_naissance);
   const ageStr = computedAge ? `${computedAge} ans` : '67 ans';
-  const firstName = c?.first_name || c?.prenom || 'Marie';
-  const lastName = c?.last_name || c?.nom || 'Dupont';
+  const firstName = toSafeString(c?.first_name || c?.prenom, 'Marie');
+  const lastName = toSafeString(c?.last_name || c?.nom, 'Dupont');
   const fullName = `${firstName} ${lastName}`.trim() || 'Marie Dupont';
-  const initials = `${firstName?.[0] || 'M'}${lastName?.[0] || 'D'}`.toUpperCase();
-  const genderStr = c?.gender || c?.sexe || 'Féminin';
+  const initials = `${firstName[0] || 'M'}${lastName[0] || 'D'}`.toUpperCase();
+  const genderStr = toSafeString(c?.gender || c?.sexe, 'Féminin');
   const joinDateStr = formatDate(c?.join_date || c?.created_at || c?.date_inscription) || '15 mars 2023';
-  const cityStr = c?.city || c?.ville || 'Tarnos';
-  const postalCodeStr = c?.postal_code || c?.code_postal || '';
+  const cityStr = toSafeString(c?.city || c?.ville, 'Tarnos');
+  const postalCodeStr = toSafeString(c?.postal_code || c?.code_postal, '');
   const addressStr = c?.address || c?.adresse
-    ? `${c?.address || c?.adresse}, ${postalCodeStr} ${cityStr}`.trim()
+    ? `${toSafeString(c?.address || c?.adresse)}, ${postalCodeStr} ${cityStr}`.trim()
     : '12 rue des Fleurs, 40220 Tarnos';
-  const phoneStr = c?.phone || c?.telephone || '06 12 34 56 78';
-  const emailStr = c?.email || 'marie.dupont@email.fr';
+  const phoneStr = toSafeString(c?.phone || c?.telephone, '06 12 34 56 78');
+  const emailStr = toSafeString(c?.email, 'marie.dupont@email.fr');
 
-  // Medical data with safe fallback
+  // Medical data with safe fallback (ensuring no object rendering)
   const med = c?.medical_record || c?.medical_info || c?.medical || {};
-  const bloodType = med?.blood_type || med?.groupe_sanguin || 'A+';
-  const doctorName = med?.doctor_name || med?.medecin_traitant || 'Dr. Isabelle Leclerc';
-  const allergies = med?.allergies || 'Pénicilline';
+  const bloodType = toSafeString(med?.blood_type || med?.groupe_sanguin, 'A+');
+  const doctorName = toSafeString(med?.doctor_name || med?.medecin_traitant, 'Dr. Isabelle Leclerc');
+  const allergies = toSafeString(med?.allergies, 'Pénicilline');
   const rawPathologies = med?.pathologiesList || med?.pathologies;
   const pathologiesList =
     Array.isArray(rawPathologies) && rawPathologies.length > 0
-      ? rawPathologies
+      ? rawPathologies.map((p) => toSafeString(p)).filter(Boolean)
       : typeof rawPathologies === 'string' && rawPathologies.trim()
       ? rawPathologies.split(',').map((item) => item.trim()).filter(Boolean)
       : ['Hypertension artérielle', 'Diabète type 2'];
 
-  // Referent volunteer
+  // Referent volunteer (ensuring no object rendering)
   const referent = c?.referent || c?.benevole_referent || {};
-  const referentName = typeof referent === 'string' && referent.trim()
-    ? referent.trim()
-    : referent?.first_name || referent?.last_name
-    ? `${referent?.first_name || ''} ${referent?.last_name || ''}`.trim()
-    : 'Sophie Renaud';
+  const referentName = typeof referent === 'object' && referent !== null
+    ? `${toSafeString(referent?.first_name)} ${toSafeString(referent?.last_name)}`.trim() || toSafeString(referent?.name, 'Sophie Renaud')
+    : toSafeString(referent, 'Sophie Renaud');
 
   // Safe appointments & timeline arrays
   const appointmentsList = Array.isArray(c?.appointments) && c.appointments.length > 0
@@ -210,11 +248,11 @@ function CompanionProfile() {
     ? c.timeline
     : MOCK_TIMELINE;
 
-  // Safe stats
+  // Safe stats (ensuring numbers)
   const stats = {
-    formations: c?.stats?.formations ?? MOCK_STATS.formations,
-    documents: c?.stats?.documents ?? MOCK_STATS.documents,
-    realisations: c?.stats?.realisations ?? MOCK_STATS.realisations,
+    formations: Number(c?.stats?.formations ?? MOCK_STATS.formations) || 0,
+    documents: Number(c?.stats?.documents ?? MOCK_STATS.documents) || 0,
+    realisations: Number(c?.stats?.realisations ?? MOCK_STATS.realisations) || 0,
   };
 
   return (
@@ -504,9 +542,9 @@ function CompanionProfile() {
                       />
                       {apt?.status === 'confirmé' ? 'Confirmé' : 'À confirmer'}
                     </span>
-                    <p className="text-sm font-bold text-gray-900 pt-0.5">{apt?.type || 'Rendez-vous'}</p>
-                    <p className="text-xs text-gray-600">{apt?.doctor || '—'}</p>
-                    <p className="text-xs text-gray-400">{apt?.date || '—'}</p>
+                    <p className="text-sm font-bold text-gray-900 pt-0.5">{toSafeString(apt?.type, 'Rendez-vous')}</p>
+                    <p className="text-xs text-gray-600">{toSafeString(apt?.doctor, '—')}</p>
+                    <p className="text-xs text-gray-400">{formatDateTime(apt?.date)}</p>
                   </div>
                 ))}
               </div>
@@ -553,8 +591,8 @@ function CompanionProfile() {
                         <Icon className="w-4 h-4" />
                       </div>
                       <div>
-                        <p className="text-xs text-gray-500 font-medium">{event?.text || 'Événement'}</p>
-                        <p className="text-sm font-semibold text-gray-900 mt-0.5">{event?.date || '—'}</p>
+                        <p className="text-xs text-gray-500 font-medium">{toSafeString(event?.text, 'Événement')}</p>
+                        <p className="text-sm font-semibold text-gray-900 mt-0.5">{formatDateTime(event?.date)}</p>
                       </div>
                     </div>
                   );
@@ -604,7 +642,7 @@ function CompanionProfile() {
       <SendMessageModal
         isOpen={showMsgModal}
         onClose={() => setShowMsgModal(false)}
-        defaultReceiverName={`${companion?.first_name || ''} ${companion?.last_name || ''}`.trim()}
+        defaultReceiverName={`${toSafeString(companion?.first_name)} ${toSafeString(companion?.last_name)}`.trim() || 'Compagnon'}
         defaultReceiverId={companion?.id}
       />
     </div>
