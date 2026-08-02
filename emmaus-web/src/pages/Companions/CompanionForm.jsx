@@ -69,8 +69,9 @@ const InputField = ({ id, name, label, icon: Icon, type = 'text', required, plac
  * Organized into sections: Personal Info, Contact, Medical.
  * @param {{ companion?: object, onSave: function, onClose: function }} props
  */
-function CompanionForm({ companion, onSave, onClose }) {
-  const isEditing = Boolean(companion);
+function CompanionForm({ companion, initialData, onSave, onSuccess, onClose }) {
+  const targetData = companion || initialData || null;
+  const isEditing = Boolean(targetData);
 
   const [formData, setFormData] = useState({
     first_name: '',
@@ -121,36 +122,37 @@ function CompanionForm({ companion, onSave, onClose }) {
 
   // Populate form when editing an existing companion
   useEffect(() => {
-    if (companion) {
+    if (targetData) {
       setFormData({
-        first_name: companion.first_name || '',
-        last_name: companion.last_name || '',
-        gender: companion.gender || '',
-        date_of_birth: companion.date_of_birth || '',
-        email: companion.email || '',
+        first_name: targetData.first_name || '',
+        last_name: targetData.last_name || '',
+        gender: targetData.gender || '',
+        date_of_birth: targetData.date_of_birth ? targetData.date_of_birth.split('T')[0] : '',
+        email: targetData.email || '',
         password: '',
-        phone: companion.phone || '',
-        address: companion.address || '',
-        postal_code: companion.postal_code || '',
-        city: companion.city || '',
-        role: companion.role || companion.roles?.name || 'Viewer',
-        role_id: companion.role_id || '',
-        profession: companion.profession || '',
-        avatar_url: companion.avatar_url || '',
+        phone: targetData.phone || '',
+        address: targetData.address || '',
+        postal_code: targetData.postal_code || '',
+        city: targetData.city || '',
+        role: targetData.role || targetData.roles?.name || 'Viewer',
+        role_id: targetData.role_id || '',
+        profession: targetData.profession || '',
+        avatar_url: targetData.avatar_url || '',
       });
-      setAvatarPreview(companion.avatar_url || '');
+      setAvatarPreview(targetData.avatar_url || '');
 
       // Populate medical data if available
-      if (companion.medical_record) {
-        setMedicalData({
-          blood_type: companion.medical_record.blood_type || '',
-          doctor_name: companion.medical_record.doctor_name || '',
-          allergies: companion.medical_record.allergies || '',
-          pathologies: companion.medical_record.pathologies || '',
-        });
-      }
+      const med = targetData.medical_record || targetData.medical || {};
+      setMedicalData({
+        blood_type: med.blood_type || '',
+        doctor_name: med.doctor_name || '',
+        allergies: med.allergies || '',
+        pathologies: Array.isArray(med.pathologiesList)
+          ? med.pathologiesList.join(', ')
+          : med.pathologies || '',
+      });
     }
-  }, [companion]);
+  }, [targetData]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -192,7 +194,11 @@ function CompanionForm({ companion, onSave, onClose }) {
       // Attach medical data as a nested object
       payload.medical = { ...medicalData };
 
-      await onSave(payload);
+      if (onSave) {
+        await onSave(payload);
+      } else if (onSuccess) {
+        await onSuccess(payload);
+      }
     } catch (err) {
       setError(err.message || 'Une erreur est survenue.');
     } finally {
@@ -333,7 +339,7 @@ function CompanionForm({ companion, onSave, onClose }) {
                 label={isEditing ? "Nouveau mot de passe (optionnel)" : "Mot de passe"}
                 icon={Lock}
                 type="password"
-                placeholder="••••••••"
+                placeholder={isEditing ? "Laisser vide pour ne pas changer" : "••••••••"}
                 value={formData.password}
                 onChange={handleChange}
                 required={!isEditing}

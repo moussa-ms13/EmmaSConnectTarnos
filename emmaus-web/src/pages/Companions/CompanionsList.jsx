@@ -499,6 +499,7 @@ function CompanionsList() {
       {showForm && (
         <CompanionForm
           companion={editingCompanion}
+          initialData={editingCompanion}
           onSave={handleSave}
           onClose={() => {
             setShowForm(false);

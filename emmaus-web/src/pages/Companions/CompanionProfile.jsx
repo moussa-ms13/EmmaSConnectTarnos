@@ -20,7 +20,7 @@ import {
   AlertTriangle,
   TrendingUp,
 } from 'lucide-react';
-import { getCompanionById } from '../../services/companionService';
+import { getCompanionById, updateCompanion } from '../../services/companionService';
 import { useAuth } from '../../components/auth/AuthProvider';
 import AppointmentModal from '../Appointments/AppointmentModal';
 import CompanionForm from './CompanionForm';
@@ -539,9 +539,18 @@ function CompanionProfile() {
       {/* ───── Edit Companion Modal ───── */}
       {showEditModal && c && (
         <CompanionForm
+          companion={companion}
+          initialData={companion}
           isOpen={showEditModal}
           onClose={() => setShowEditModal(false)}
-          initialData={companion}
+          onSave={async (formData) => {
+            const { data, error: updateError } = await updateCompanion(companion.id, formData);
+            if (updateError) {
+              throw new Error(updateError.message);
+            }
+            if (data) setCompanion(data);
+            setShowEditModal(false);
+          }}
           onSuccess={(updated) => {
             if (updated) setCompanion(updated);
             setShowEditModal(false);
