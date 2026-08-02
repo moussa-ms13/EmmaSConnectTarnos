@@ -16,9 +16,9 @@ import {
   Award,
   Calendar,
   Clock,
-  Loader2,
   AlertTriangle,
   TrendingUp,
+  Activity,
 } from 'lucide-react';
 import { getCompanionById, updateCompanion } from '../../services/companionService';
 import { useAuth } from '../../components/auth/AuthProvider';
@@ -62,13 +62,14 @@ const MOCK_STATS = {
  * Helper: compute age from date string.
  */
 function computeAge(dateStr) {
-  if (!dateStr) return null;
+  if (!dateStr || typeof dateStr !== 'string') return null;
   const birth = new Date(dateStr);
+  if (isNaN(birth.getTime())) return null;
   const today = new Date();
   let age = today.getFullYear() - birth.getFullYear();
   const m = today.getMonth() - birth.getMonth();
   if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
-  return age;
+  return isNaN(age) ? null : age;
 }
 
 /**
@@ -76,11 +77,17 @@ function computeAge(dateStr) {
  */
 function formatDate(dateStr) {
   if (!dateStr) return '—';
-  return new Date(dateStr).toLocaleDateString('fr-FR', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  });
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return typeof dateStr === 'string' ? dateStr : '—';
+    return d.toLocaleDateString('fr-FR', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    });
+  } catch {
+    return typeof dateStr === 'string' ? dateStr : '—';
+  }
 }
 
 /**
@@ -105,16 +112,27 @@ function CompanionProfile() {
 
   useEffect(() => {
     async function load() {
-      setLoading(true);
-      const { data, error: fetchError } = await getCompanionById(id);
-      if (fetchError) {
-        setError(fetchError.message);
-      } else if (!data) {
-        setError('Compagnon introuvable.');
-      } else {
-        setCompanion(data);
+      if (!id) {
+        setError('Identifiant du compagnon manquant.');
+        setLoading(false);
+        return;
       }
-      setLoading(false);
+      setLoading(true);
+      setError(null);
+      try {
+        const { data, error: fetchError } = await getCompanionById(id);
+        if (fetchError) {
+          setError(fetchError?.message || 'Erreur lors du chargement.');
+        } else if (!data) {
+          setError('Compagnon introuvable.');
+        } else {
+          setCompanion(data);
+        }
+      } catch (err) {
+        setError(err?.message || 'Erreur inattendue lors du chargement du compagnon.');
+      } finally {
+        setLoading(false);
+      }
     }
     load();
   }, [id]);
@@ -145,35 +163,59 @@ function CompanionProfile() {
     );
   }
 
-  const c = companion;
-  const computedAge = computeAge(c.date_of_birth);
+  const c = companion || {};
+  const computedAge = computeAge(c?.date_of_birth || c?.date_naissance);
   const ageStr = computedAge ? `${computedAge} ans` : '67 ans';
-  const firstName = c.first_name || 'Marie';
-  const lastName = c.last_name || 'Dupont';
-  const fullName = `${firstName} ${lastName}`;
-  const initials = `${firstName[0] || 'M'}${lastName[0] || 'D'}`;
-  const genderStr = c.gender || 'Féminin';
-  const joinDateStr = c.join_date ? formatDate(c.join_date) : '15 mars 2023';
-  const cityStr = c.city || 'Tarnos';
-  const addressStr = c.address ? `${c.address}, ${c.postal_code || ''} ${cityStr}`.trim() : '12 rue des Fleurs, 40220 Tarnos';
-  const phoneStr = c.phone || '06 12 34 56 78';
-  const emailStr = c.email || 'marie.dupont@email.fr';
+  const firstName = c?.first_name || c?.prenom || 'Marie';
+  const lastName = c?.last_name || c?.nom || 'Dupont';
+  const fullName = `${firstName} ${lastName}`.trim() || 'Marie Dupont';
+  const initials = `${firstName?.[0] || 'M'}${lastName?.[0] || 'D'}`.toUpperCase();
+  const genderStr = c?.gender || c?.sexe || 'Féminin';
+  const joinDateStr = formatDate(c?.join_date || c?.created_at || c?.date_inscription) || '15 mars 2023';
+  const cityStr = c?.city || c?.ville || 'Tarnos';
+  const postalCodeStr = c?.postal_code || c?.code_postal || '';
+  const addressStr = c?.address || c?.adresse
+    ? `${c?.address || c?.adresse}, ${postalCodeStr} ${cityStr}`.trim()
+    : '12 rue des Fleurs, 40220 Tarnos';
+  const phoneStr = c?.phone || c?.telephone || '06 12 34 56 78';
+  const emailStr = c?.email || 'marie.dupont@email.fr';
 
-  // Medical data with screenshot fallback
-  const med = c.medical_record || {};
-  const bloodType = med.blood_type || 'A+';
-  const doctorName = med.doctor_name || 'Dr. Isabelle Leclerc';
-  const allergies = med.allergies || 'Pénicilline';
+  // Medical data with safe fallback
+  const med = c?.medical_record || c?.medical_info || c?.medical || {};
+  const bloodType = med?.blood_type || med?.groupe_sanguin || 'A+';
+  const doctorName = med?.doctor_name || med?.medecin_traitant || 'Dr. Isabelle Leclerc';
+  const allergies = med?.allergies || 'Pénicilline';
+  const rawPathologies = med?.pathologiesList || med?.pathologies;
   const pathologiesList =
-    med.pathologiesList && med.pathologiesList.length > 0
-      ? med.pathologiesList
+    Array.isArray(rawPathologies) && rawPathologies.length > 0
+      ? rawPathologies
+      : typeof rawPathologies === 'string' && rawPathologies.trim()
+      ? rawPathologies.split(',').map((item) => item.trim()).filter(Boolean)
       : ['Hypertension artérielle', 'Diabète type 2'];
 
   // Referent volunteer
-  const referent = c.referent;
-  const referentName = referent
-    ? `${referent.first_name || ''} ${referent.last_name || ''}`.trim()
+  const referent = c?.referent || c?.benevole_referent || {};
+  const referentName = typeof referent === 'string' && referent.trim()
+    ? referent.trim()
+    : referent?.first_name || referent?.last_name
+    ? `${referent?.first_name || ''} ${referent?.last_name || ''}`.trim()
     : 'Sophie Renaud';
+
+  // Safe appointments & timeline arrays
+  const appointmentsList = Array.isArray(c?.appointments) && c.appointments.length > 0
+    ? c.appointments
+    : MOCK_APPOINTMENTS;
+
+  const timelineList = Array.isArray(c?.timeline) && c.timeline.length > 0
+    ? c.timeline
+    : MOCK_TIMELINE;
+
+  // Safe stats
+  const stats = {
+    formations: c?.stats?.formations ?? MOCK_STATS.formations,
+    documents: c?.stats?.documents ?? MOCK_STATS.documents,
+    realisations: c?.stats?.realisations ?? MOCK_STATS.realisations,
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 -m-8 p-6 sm:p-8">
@@ -274,7 +316,7 @@ function CompanionProfile() {
                   <BookOpen className="w-5 h-5 text-blue-300" />
                 </div>
                 <div>
-                  <p className="text-xl font-bold text-white leading-tight">{MOCK_STATS.formations}%</p>
+                  <p className="text-xl font-bold text-white leading-tight">{stats.formations}%</p>
                   <p className="text-xs text-blue-200 mt-0.5">Formations</p>
                 </div>
               </div>
@@ -285,7 +327,7 @@ function CompanionProfile() {
                   <FileText className="w-5 h-5 text-blue-300" />
                 </div>
                 <div>
-                  <p className="text-xl font-bold text-white leading-tight">{MOCK_STATS.documents}</p>
+                  <p className="text-xl font-bold text-white leading-tight">{stats.documents}</p>
                   <p className="text-xs text-blue-200 mt-0.5">Documents</p>
                 </div>
               </div>
@@ -296,7 +338,7 @@ function CompanionProfile() {
                   <Award className="w-5 h-5 text-blue-300" />
                 </div>
                 <div>
-                  <p className="text-xl font-bold text-white leading-tight">{MOCK_STATS.realisations}</p>
+                  <p className="text-xl font-bold text-white leading-tight">{stats.realisations}</p>
                   <p className="text-xs text-blue-200 mt-0.5">Réalisations</p>
                 </div>
               </div>
@@ -366,12 +408,12 @@ function CompanionProfile() {
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm text-gray-700 font-medium">Progression globale</span>
-                  <span className="text-sm font-bold text-blue-600">{MOCK_STATS.formations}%</span>
+                  <span className="text-sm font-bold text-blue-600">{stats.formations}%</span>
                 </div>
                 <div className="w-full h-2.5 rounded-full bg-gray-100 overflow-hidden mb-2">
                   <div
                     className="h-full rounded-full bg-blue-600 transition-all duration-500"
-                    style={{ width: `${MOCK_STATS.formations}%` }}
+                    style={{ width: `${stats.formations}%` }}
                   />
                 </div>
                 <p className="text-xs text-gray-400">Bonne progression</p>
@@ -443,28 +485,28 @@ function CompanionProfile() {
               </div>
 
               <div className="space-y-4 mb-4">
-                {MOCK_APPOINTMENTS.map((apt) => (
+                {appointmentsList.map((apt, idx) => (
                   <div
-                    key={apt.id}
+                    key={apt?.id || idx}
                     className="p-4 rounded-xl border border-gray-100 bg-white shadow-2xs space-y-1"
                   >
                     <span
                       className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold ${
-                        apt.status === 'confirmé'
+                        apt?.status === 'confirmé'
                           ? 'bg-emerald-100 text-emerald-700'
                           : 'bg-blue-100 text-blue-700'
                       }`}
                     >
                       <span
                         className={`w-1.5 h-1.5 rounded-full ${
-                          apt.status === 'confirmé' ? 'bg-emerald-500' : 'bg-blue-500'
+                          apt?.status === 'confirmé' ? 'bg-emerald-500' : 'bg-blue-500'
                         }`}
                       />
-                      {apt.status === 'confirmé' ? 'Confirmé' : 'À confirmer'}
+                      {apt?.status === 'confirmé' ? 'Confirmé' : 'À confirmer'}
                     </span>
-                    <p className="text-sm font-bold text-gray-900 pt-0.5">{apt.type}</p>
-                    <p className="text-xs text-gray-600">{apt.doctor}</p>
-                    <p className="text-xs text-gray-400">{apt.date}</p>
+                    <p className="text-sm font-bold text-gray-900 pt-0.5">{apt?.type || 'Rendez-vous'}</p>
+                    <p className="text-xs text-gray-600">{apt?.doctor || '—'}</p>
+                    <p className="text-xs text-gray-400">{apt?.date || '—'}</p>
                   </div>
                 ))}
               </div>
@@ -489,7 +531,7 @@ function CompanionProfile() {
               </div>
 
               <div className="space-y-4">
-                {MOCK_TIMELINE.map((event) => {
+                {timelineList.map((event, idx) => {
                   const iconMap = {
                     clock: Clock,
                     file: FileText,
@@ -500,19 +542,19 @@ function CompanionProfile() {
                     emerald: 'bg-emerald-100 text-emerald-600',
                     purple: 'bg-purple-100 text-purple-600',
                   };
-                  const Icon = iconMap[event.icon] || Clock;
-                  const colorClass = colorMap[event.color] || 'bg-gray-100 text-gray-600';
+                  const Icon = iconMap[event?.icon] || Clock;
+                  const colorClass = colorMap[event?.color] || 'bg-gray-100 text-gray-600';
 
                   return (
-                    <div key={event.id} className="flex items-start gap-3.5">
+                    <div key={event?.id || idx} className="flex items-start gap-3.5">
                       <div
                         className={`w-8 h-8 rounded-full ${colorClass} flex items-center justify-center shrink-0 mt-0.5`}
                       >
                         <Icon className="w-4 h-4" />
                       </div>
                       <div>
-                        <p className="text-xs text-gray-500 font-medium">{event.text}</p>
-                        <p className="text-sm font-semibold text-gray-900 mt-0.5">{event.date}</p>
+                        <p className="text-xs text-gray-500 font-medium">{event?.text || 'Événement'}</p>
+                        <p className="text-sm font-semibold text-gray-900 mt-0.5">{event?.date || '—'}</p>
                       </div>
                     </div>
                   );
