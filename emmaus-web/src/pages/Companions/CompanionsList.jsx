@@ -21,6 +21,7 @@ import {
   createCompanion,
   updateCompanion,
   deleteCompanion,
+  fetchMyCompanionId,
 } from '../../services/companionService';
 import CompanionForm from './CompanionForm';
 
@@ -31,8 +32,18 @@ const ITEMS_PER_PAGE = 10;
  */
 const ROLE_CONFIG = {
   admin: { label: 'Administrateur', style: 'bg-purple-100 text-purple-700' },
-  user:  { label: 'Utilisateur',    style: 'bg-blue-100 text-blue-700' },
-  read:  { label: 'Lecteur',        style: 'bg-gray-100 text-gray-600' },
+  Admin: { label: 'Administrateur', style: 'bg-purple-100 text-purple-700' },
+  administrateur: { label: 'Administrateur', style: 'bg-purple-100 text-purple-700' },
+  Administrateur: { label: 'Administrateur', style: 'bg-purple-100 text-purple-700' },
+  editor: { label: 'Éditeur / Manager', style: 'bg-blue-100 text-blue-700' },
+  Editor: { label: 'Éditeur / Manager', style: 'bg-blue-100 text-blue-700' },
+  manager: { label: 'Éditeur / Manager', style: 'bg-blue-100 text-blue-700' },
+  Manager: { label: 'Éditeur / Manager', style: 'bg-blue-100 text-blue-700' },
+  user: { label: 'Utilisateur', style: 'bg-blue-100 text-blue-700' },
+  User: { label: 'Utilisateur', style: 'bg-blue-100 text-blue-700' },
+  viewer: { label: 'Lecteur / Compagnon', style: 'bg-gray-100 text-gray-700' },
+  Viewer: { label: 'Lecteur / Compagnon', style: 'bg-gray-100 text-gray-700' },
+  read: { label: 'Lecteur / Compagnon', style: 'bg-gray-100 text-gray-700' },
 };
 
 /**
@@ -40,8 +51,38 @@ const ROLE_CONFIG = {
  * Displays a searchable, paginated data table with CRUD actions.
  */
 function CompanionsList() {
-  const { user, canAdd, canEdit, canDelete } = useAuth();
+  const { user, profile, isViewer, isCompagnon, canAdd, canEdit, canDelete } = useAuth();
   const navigate = useNavigate();
+
+  // Strict access control: If the logged-in user is a Viewer or Compagnon, redirect them to their own profile page
+  useEffect(() => {
+    let isMounted = true;
+    async function redirectViewer() {
+      if (isViewer || isCompagnon) {
+        let targetId = profile?.is_compagnon ? profile.id : null;
+        if (!targetId) {
+          targetId = await fetchMyCompanionId(user?.id, user?.email);
+        }
+        if (!targetId && profile?.id) {
+          targetId = profile.id;
+        }
+        if (!targetId && user?.id) {
+          targetId = user.id;
+        }
+        if (isMounted && targetId) {
+          navigate(`/compagnons/${targetId}`, { replace: true });
+        }
+      }
+    }
+
+    if (isViewer || isCompagnon) {
+      redirectViewer();
+    }
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isViewer, isCompagnon, profile, user, navigate]);
 
   // Data state
   const [companions, setCompanions] = useState([]);
@@ -191,13 +232,30 @@ function CompanionsList() {
   };
 
   /**
-   * Get role display config from the joined roles data.
+   * Get role display config from the companion role or joined roles data.
    */
   const getRoleDisplay = (companion) => {
-    const roleName = companion.roles?.name;
-    if (!roleName) return null;
-    return ROLE_CONFIG[roleName] || { label: roleName, style: 'bg-gray-100 text-gray-600' };
+    const roleVal = companion.role || companion.roles?.name || companion.role_name;
+    if (!roleVal) return { label: 'Compagnon', style: 'bg-gray-100 text-gray-600' };
+    if (ROLE_CONFIG[roleVal]) return ROLE_CONFIG[roleVal];
+    const lower = String(roleVal).toLowerCase();
+    if (lower === 'admin' || lower === 'administrateur') return ROLE_CONFIG.admin;
+    if (lower === 'editor' || lower === 'manager' || lower === 'user' || lower === 'utilisateur') return ROLE_CONFIG.editor;
+    if (lower === 'viewer' || lower === 'lecteur' || lower === 'read' || lower === 'compagnon') return ROLE_CONFIG.viewer;
+    return { label: roleVal, style: 'bg-gray-100 text-gray-600' };
   };
+
+  // If user is a viewer or companion, render redirect spinner instead of full companions list
+  if (isViewer || isCompagnon) {
+    return (
+      <div className="flex items-center justify-center py-20 min-h-[50vh]">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="w-7 h-7 text-blue-500 animate-spin" />
+          <p className="text-sm text-gray-500">Redirection vers votre profil...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

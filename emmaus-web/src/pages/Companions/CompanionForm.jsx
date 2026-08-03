@@ -123,6 +123,13 @@ function CompanionForm({ companion, initialData, onSave, onSuccess, onClose }) {
   // Populate form when editing an existing companion
   useEffect(() => {
     if (targetData) {
+      const rawRole = targetData.role || targetData.roles?.name || 'Viewer';
+      const normRole = String(rawRole).toLowerCase();
+      const resolvedRole =
+        normRole === 'admin' || normRole === 'administrateur' ? 'Admin' :
+        normRole === 'editor' || normRole === 'manager' || normRole === 'user' || normRole === 'utilisateur' ? 'Editor' :
+        'Viewer';
+
       setFormData({
         first_name: targetData.first_name || '',
         last_name: targetData.last_name || '',
@@ -134,7 +141,7 @@ function CompanionForm({ companion, initialData, onSave, onSuccess, onClose }) {
         address: targetData.address || '',
         postal_code: targetData.postal_code || '',
         city: targetData.city || '',
-        role: targetData.role || targetData.roles?.name || 'Viewer',
+        role: resolvedRole,
         role_id: targetData.role_id || '',
         profession: targetData.profession || '',
         avatar_url: targetData.avatar_url || '',

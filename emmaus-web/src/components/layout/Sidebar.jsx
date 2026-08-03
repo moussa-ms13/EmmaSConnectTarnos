@@ -35,7 +35,7 @@ const getLinkClass = ({ isActive }) =>
 
 function Sidebar({ mobileOpen = false, onClose }) {
   const navigate = useNavigate();
-  const { user, profile, isCompagnon, roleName, signOut } = useAuth();
+  const { user, profile, isCompagnon, isViewer, roleName, signOut } = useAuth();
 
   const [companionsCount, setCompanionsCount] = useState(null);
   const [appointmentsCount, setAppointmentsCount] = useState(null);
@@ -113,7 +113,7 @@ function Sidebar({ mobileOpen = false, onClose }) {
 
   // ───── Dynamic Navigation based on Role ─────
   const companionNavItems = [
-    { to: `/compagnons/${user?.id || 'demo'}`, label: 'Mon Dossier', icon: User },
+    { to: `/compagnons/${profile?.id || user?.id || 'demo'}`, label: 'Mon Dossier', icon: User },
     { to: '/rendez-vous',                      label: 'Mes RDV',     icon: Calendar },
     { to: '/formations',                       label: 'Formations',  icon: BookOpen },
     { to: '/documents',                        label: 'Mes Documents', icon: FileText },
@@ -131,7 +131,7 @@ function Sidebar({ mobileOpen = false, onClose }) {
     { to: '/conges',       label: 'Congés',             icon: Palmtree },
   ];
 
-  const navItems = isCompagnon ? companionNavItems : staffNavItems;
+  const navItems = isCompagnon || isViewer ? companionNavItems : staffNavItems;
 
   const sidebarContent = (
     <>

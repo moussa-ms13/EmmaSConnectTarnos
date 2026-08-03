@@ -30,6 +30,37 @@ export async function fetchCompanions() {
 }
 
 /**
+ * Find the linked companion ID for the current auth user (by user_id or email).
+ * Useful for redirecting viewers to their own profile page.
+ * @param {string} userId
+ * @param {string} [userEmail]
+ * @returns {Promise<string|null>}
+ */
+export async function fetchMyCompanionId(userId, userEmail) {
+  if (!userId && !userEmail) return null;
+
+  if (userId) {
+    const { data } = await supabase
+      .from('compagnons')
+      .select('id')
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (data?.id) return data.id;
+  }
+
+  if (userEmail) {
+    const { data } = await supabase
+      .from('compagnons')
+      .select('id')
+      .eq('email', userEmail)
+      .maybeSingle();
+    if (data?.id) return data.id;
+  }
+
+  return null;
+}
+
+/**
  * Fetch a single companion by ID with full profile details:
  * - Role, Medical records, Referent profile
  * @param {string} id

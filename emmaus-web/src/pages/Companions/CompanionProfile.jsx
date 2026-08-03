@@ -141,7 +141,7 @@ function formatDateTime(dateVal) {
 function CompanionProfile() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { canAdd, canEdit } = useAuth();
+  const { canAdd, canEdit, isViewer, isCompagnon } = useAuth();
 
   const [companion, setCompanion] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -262,14 +262,16 @@ function CompanionProfile() {
             TASK 1.1: TOP NAVIGATION BREADCRUMB
             ═══════════════════════════════════════════════════════ */}
         <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => navigate('/compagnons')}
-            className="p-1.5 rounded-lg text-gray-500 hover:text-gray-900 hover:bg-gray-200/60 transition-colors"
-            title="Retour à la liste"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </button>
+          {!isViewer && !isCompagnon && (
+            <button
+              type="button"
+              onClick={() => navigate('/compagnons')}
+              className="p-1.5 rounded-lg text-gray-500 hover:text-gray-900 hover:bg-gray-200/60 transition-colors"
+              title="Retour à la liste"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+          )}
           <div>
             <h1 className="text-xl font-bold text-gray-900 leading-tight">{fullName}</h1>
             <p className="text-xs text-gray-500">{ageStr} - Actif</p>
