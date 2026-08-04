@@ -303,3 +303,86 @@ export async function uploadAvatar(file) {
   return { url: data?.publicUrl || null, error: null };
 }
 
+// ─────────────────────────────────────────────────────────────
+// Task Management Functions
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Fetch all tasks (Admin/Editor only).
+ * Joins compagnon name for display.
+ * @returns {{ data, error }}
+ */
+export async function fetchAllTasks() {
+  const { data, error } = await supabase
+    .from('tasks')
+    .select('*, compagnon:compagnons!assigned_to(id, first_name, last_name, avatar_url)')
+    .order('created_at', { ascending: false });
+  return { data, error };
+}
+
+/**
+ * Fetch tasks assigned to a specific companion (Viewer/Compagnon).
+ * @param {string} companionId
+ * @returns {{ data, error }}
+ */
+export async function fetchMyTasks(companionId) {
+  if (!companionId) return { data: [], error: null };
+  const { data, error } = await supabase
+    .from('tasks')
+    .select('*')
+    .eq('assigned_to', companionId)
+    .order('created_at', { ascending: false });
+  return { data, error };
+}
+
+/**
+ * Create a new task.
+ * @param {{ title, description, status, priority, assigned_to, due_date }} payload
+ * @returns {{ data, error }}
+ */
+export async function createTask(payload) {
+  const { data: { user }, error: authErr } = await supabase.auth.getUser();
+  if (authErr || !user) return { data: null, error: authErr || new Error('Non authentifié.') };
+
+  const clean = Object.fromEntries(
+    Object.entries({ ...payload, created_by: user.id }).filter(([, v]) => v !== '' && v !== undefined && v !== null)
+  );
+
+  const { data, error } = await supabase
+    .from('tasks')
+    .insert([clean])
+    .select('*, compagnon:compagnons!assigned_to(id, first_name, last_name)')
+    .single();
+  return { data, error };
+}
+
+/**
+ * Update the status of a task.
+ * @param {string} taskId
+ * @param {string} status  - 'todo' | 'in_progress' | 'done' | 'cancelled'
+ * @returns {{ data, error }}
+ */
+export async function updateTaskStatus(taskId, status) {
+  const { data, error } = await supabase
+    .from('tasks')
+    .update({ status, updated_at: new Date().toISOString() })
+    .eq('id', taskId)
+    .select()
+    .single();
+  return { data, error };
+}
+
+/**
+ * Delete a task by ID (Admin only).
+ * @param {string} taskId
+ * @returns {{ error }}
+ */
+export async function deleteTask(taskId) {
+  const { error } = await supabase
+    .from('tasks')
+    .delete()
+    .eq('id', taskId);
+  return { error };
+}
+
+

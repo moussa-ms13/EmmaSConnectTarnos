@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Users, Calendar, BookOpen, MessageSquare, TrendingUp, ArrowUpRight,
   ArrowRight, Clock, Plus, Activity, CheckCircle2, AlertCircle,
   UserPlus, Eye, Loader2, ChevronLeft, ChevronRight, UserCheck, Check,
+  ClipboardList, Target, Flag, Trash2, Edit3,
 } from 'lucide-react';
 import { useAuth } from '../../components/auth/AuthProvider';
 import {
@@ -11,7 +12,7 @@ import {
   getRecentCompanions,
   getUpcomingAppointments,
 } from '../../services/dashboardService';
-import { fetchCompanions } from '../../services/companionService';
+import { fetchCompanions, fetchAllTasks, fetchMyTasks, createTask, updateTaskStatus, deleteTask } from '../../services/companionService';
 import { getAllAppointments } from '../../services/appointmentService';
 
 /**
@@ -73,7 +74,7 @@ function getWeekRangeAndDays(offsetWeeks = 0) {
 }
 
 function Dashboard() {
-  const { user, profile } = useAuth();
+  const { user, profile, isAdmin, isEditor, isViewer, isCompagnon } = useAuth();
   const navigate = useNavigate();
 
   const [stats, setStats] = useState(null);
@@ -88,6 +89,12 @@ function Dashboard() {
     medical: 0,
     activePercent: 0,
   });
+
+  // Task management state
+  const [tasks, setTasks] = useState([]);
+  const [tasksLoading, setTasksLoading] = useState(false);
+  const [showTaskModal, setShowTaskModal] = useState(false);
+  const [newTask, setNewTask] = useState({ title: '', description: '', priority: 'medium', due_date: '' });
   const [appointmentsThisWeek, setAppointmentsThisWeek] = useState(0);
   const [appointmentsList, setAppointmentsList] = useState([]);
 
@@ -205,6 +212,72 @@ function Dashboard() {
     };
   }, []);
 
+  // Load tasks based on role
+  useEffect(() => {
+    let isMounted = true;
+    async function loadTasks() {
+      setTasksLoading(true);
+      try {
+        if (isViewer || isCompagnon) {
+          // Fetch only this user's tasks
+          const companionId = profile?.id;
+          if (companionId) {
+            const { data } = await fetchMyTasks(companionId);
+            if (isMounted) setTasks(data || []);
+          }
+        } else {
+          // Admin/Editor: fetch all tasks
+          const { data } = await fetchAllTasks();
+          if (isMounted) setTasks(data || []);
+        }
+      } catch (err) {
+        console.error('Error loading tasks:', err);
+      } finally {
+        if (isMounted) setTasksLoading(false);
+      }
+    }
+    loadTasks();
+    return () => { isMounted = false; };
+  }, [isViewer, isCompagnon, profile]);
+
+  const handleCreateTask = async () => {
+    if (!newTask.title.trim()) return;
+    const { data, error } = await createTask({
+      title: newTask.title,
+      description: newTask.description,
+      priority: newTask.priority,
+      due_date: newTask.due_date || null,
+      status: 'todo',
+    });
+    if (!error && data) {
+      setTasks((prev) => [data, ...prev]);
+      setNewTask({ title: '', description: '', priority: 'medium', due_date: '' });
+      setShowTaskModal(false);
+    }
+  };
+
+  const handleToggleTaskStatus = async (taskId, currentStatus) => {
+    const next = currentStatus === 'done' ? 'todo' : 'done';
+    const { data, error } = await updateTaskStatus(taskId, next);
+    if (!error && data) {
+      setTasks((prev) => prev.map((t) => (t.id === taskId ? data : t)));
+    }
+  };
+
+  const handleDeleteTask = async (taskId) => {
+    const { error } = await deleteTask(taskId);
+    if (!error) {
+      setTasks((prev) => prev.filter((t) => t.id !== taskId));
+    }
+  };
+
+  const PRIORITY_CONFIG = {
+    low:    { label: 'Basse',   cls: 'bg-gray-100  text-gray-600'  },
+    medium: { label: 'Moyenne', cls: 'bg-blue-100  text-blue-700'  },
+    high:   { label: 'Haute',   cls: 'bg-orange-100 text-orange-700' },
+    urgent: { label: 'Urgente', cls: 'bg-red-100   text-red-700'   },
+  };
+
   // Compute Conic Gradient Doughnut string dynamically from real breakdown
   const totalC = companionBreakdown.total || 1;
   const actPct = Math.round((companionBreakdown.active / totalC) * 100);
@@ -293,6 +366,7 @@ function Dashboard() {
   const hasActivityData = activityData.some((item) => item.rdv > 0 || item.sessions > 0);
 
   return (
+    <>
     <div className="space-y-6 pb-12 max-w-7xl mx-auto">
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
         <div
@@ -647,7 +721,223 @@ function Dashboard() {
           <div /> {/* spacing placeholder */}
         </div>
       </div>
+
+      {/* ═══════════════════════════════════════════════════════════
+          TASKS SECTION — Admin/Editor: Gestion des Tâches
+                        — Viewer/Compagnon: Mes Tâches
+      ═══════════════════════════════════════════════════════════ */}
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-gray-100 dark:border-slate-800 shadow-sm overflow-hidden">
+        {/* Header */}
+        <div className="px-6 py-5 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center">
+              <ClipboardList className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-gray-900 dark:text-white">
+                {isViewer || isCompagnon ? 'Mes Tâches' : 'Gestion des Tâches'}
+              </h3>
+              <p className="text-xs text-gray-400 dark:text-slate-400">
+                {tasks.length} tâche{tasks.length !== 1 ? 's' : ''}
+                {!isViewer && !isCompagnon ? ' assignée' : ''}
+                {tasks.length !== 1 ? 's' : ''}
+              </p>
+            </div>
+          </div>
+          {/* Only Admins/Editors can create tasks */}
+          {!isViewer && !isCompagnon && (
+            <button
+              type="button"
+              onClick={() => setShowTaskModal(true)}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-colors shadow-sm"
+            >
+              <Plus className="w-4 h-4" />
+              Nouvelle tâche
+            </button>
+          )}
+        </div>
+
+        {/* Task list */}
+        <div className="p-4">
+          {tasksLoading ? (
+            <div className="py-8 flex items-center justify-center">
+              <Loader2 className="w-6 h-6 text-blue-500 animate-spin" />
+            </div>
+          ) : tasks.length === 0 ? (
+            <div className="py-10 text-center">
+              <ClipboardList className="w-10 h-10 text-gray-200 dark:text-slate-700 mx-auto mb-3" />
+              <p className="text-sm text-gray-400 dark:text-slate-500">
+                {isViewer || isCompagnon ? 'Aucune tâche assignée.' : 'Aucune tâche créée pour le moment.'}
+              </p>
+              {!isViewer && !isCompagnon && (
+                <button
+                  type="button"
+                  onClick={() => setShowTaskModal(true)}
+                  className="mt-3 text-xs font-semibold text-blue-600 hover:underline"
+                >
+                  + Créer la première tâche
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {tasks.map((task) => {
+                const pConf = PRIORITY_CONFIG[task.priority] || PRIORITY_CONFIG.medium;
+                const isDone = task.status === 'done';
+                const compName = task.compagnon
+                  ? `${task.compagnon.first_name || ''} ${task.compagnon.last_name || ''}`.trim()
+                  : null;
+                return (
+                  <div
+                    key={task.id}
+                    className={`flex items-center gap-3 px-4 py-3 rounded-xl border transition-all ${
+                      isDone
+                        ? 'bg-gray-50 dark:bg-slate-800/50 border-gray-100 dark:border-slate-700/50 opacity-60'
+                        : 'bg-white dark:bg-slate-800 border-gray-100 dark:border-slate-700 hover:border-blue-200 dark:hover:border-slate-600'
+                    }`}
+                  >
+                    {/* Checkbox */}
+                    <button
+                      type="button"
+                      onClick={() => handleToggleTaskStatus(task.id, task.status)}
+                      className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${
+                        isDone ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-gray-300 hover:border-blue-500'
+                      }`}
+                    >
+                      {isDone && <Check className="w-3 h-3" />}
+                    </button>
+
+                    {/* Content */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className={`text-sm font-semibold truncate ${isDone ? 'line-through text-gray-400' : 'text-gray-900 dark:text-white'}`}>
+                          {task.title}
+                        </p>
+                        <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${pConf.cls}`}>
+                          {pConf.label}
+                        </span>
+                      </div>
+                      {task.description && (
+                        <p className="text-xs text-gray-400 mt-0.5 truncate">{task.description}</p>
+                      )}
+                      <div className="flex items-center gap-3 mt-1 text-[10px] text-gray-400">
+                        {compName && (
+                          <span className="flex items-center gap-1">
+                            <UserCheck className="w-3 h-3" />{compName}
+                          </span>
+                        )}
+                        {task.due_date && (
+                          <span className="flex items-center gap-1">
+                            <Calendar className="w-3 h-3" />
+                            {new Date(task.due_date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Delete (Admin only) */}
+                    {isAdmin && (
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteTask(task.id)}
+                        className="p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors shrink-0"
+                        title="Supprimer"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
+
+    {/* ─── Create Task Modal ─── */}
+    {showTaskModal && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+        <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+          <div className="px-6 py-5 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between">
+            <h3 className="text-base font-bold text-gray-900 dark:text-white">Nouvelle tâche</h3>
+            <button
+              type="button"
+              onClick={() => setShowTaskModal(false)}
+              className="p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-slate-800 text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              ✕
+            </button>
+          </div>
+          <div className="p-6 space-y-4">
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 dark:text-slate-300 mb-1.5">
+                Titre <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={newTask.title}
+                onChange={(e) => setNewTask((p) => ({ ...p, title: e.target.value }))}
+                placeholder="Ex: Préparer les documents de formation"
+                className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 dark:text-slate-300 mb-1.5">Description</label>
+              <textarea
+                value={newTask.description}
+                onChange={(e) => setNewTask((p) => ({ ...p, description: e.target.value }))}
+                placeholder="Détails optionnels..."
+                rows={3}
+                className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all resize-none"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 dark:text-slate-300 mb-1.5">Priorité</label>
+                <select
+                  value={newTask.priority}
+                  onChange={(e) => setNewTask((p) => ({ ...p, priority: e.target.value }))}
+                  className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800 text-sm text-gray-900 dark:text-white outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
+                >
+                  <option value="low">Basse</option>
+                  <option value="medium">Moyenne</option>
+                  <option value="high">Haute</option>
+                  <option value="urgent">Urgente</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 dark:text-slate-300 mb-1.5">Échéance</label>
+                <input
+                  type="date"
+                  value={newTask.due_date}
+                  onChange={(e) => setNewTask((p) => ({ ...p, due_date: e.target.value }))}
+                  className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800 text-sm text-gray-900 dark:text-white outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
+                />
+              </div>
+            </div>
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowTaskModal(false)}
+                className="flex-1 py-2.5 rounded-xl border border-gray-200 dark:border-slate-700 text-sm font-semibold text-gray-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={handleCreateTask}
+                disabled={!newTask.title.trim()}
+                className="flex-1 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                Créer la tâche
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )}
+  </>
   );
 }
 
