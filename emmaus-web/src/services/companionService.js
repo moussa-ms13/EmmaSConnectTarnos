@@ -385,4 +385,211 @@ export async function deleteTask(taskId) {
   return { error };
 }
 
+// ─────────────────────────────────────────────────────────────
+// Documents (Profile Tab)
+// ─────────────────────────────────────────────────────────────
 
+/**
+ * Fetch all documents for a companion.
+ * @param {string} companionId
+ * @returns {{ data, error }}
+ */
+export async function fetchDocuments(companionId) {
+  if (!companionId) return { data: [], error: null };
+  const { data, error } = await supabase
+    .from('documents')
+    .select('*')
+    .eq('compagnon_id', companionId)
+    .order('created_at', { ascending: false });
+  return { data: data || [], error };
+}
+
+/**
+ * Add a document for a companion. Optionally uploads a file to Storage.
+ * @param {string} companionId
+ * @param {{ title: string, status: string, expiry_date?: string, icon?: string }} payload
+ * @param {File|null} file
+ * @returns {{ data, error }}
+ */
+export async function addDocument(companionId, payload, file = null) {
+  const { data: { user }, error: authErr } = await supabase.auth.getUser();
+  if (authErr || !user) return { data: null, error: authErr || new Error('Non authentifié.') };
+
+  let file_url = null;
+  let file_name = null;
+
+  if (file) {
+    const fileExt = file.name.split('.').pop();
+    const filePath = `compagnons/${companionId}/${Date.now()}_${Math.random().toString(36).slice(2)}.${fileExt}`;
+    const { error: uploadErr } = await supabase.storage
+      .from('documents')
+      .upload(filePath, file, { cacheControl: '3600', upsert: false });
+    if (!uploadErr) {
+      const { data: urlData } = supabase.storage.from('documents').getPublicUrl(filePath);
+      file_url = urlData?.publicUrl || null;
+      file_name = file.name;
+    }
+  }
+
+  const { data, error } = await supabase
+    .from('documents')
+    .insert([{
+      compagnon_id: companionId,
+      title: payload.title,
+      status: payload.status || 'valide',
+      expiry_date: payload.expiry_date || null,
+      icon: payload.icon || '📄',
+      file_url,
+      file_name,
+      created_by: user.id,
+    }])
+    .select()
+    .single();
+  return { data, error };
+}
+
+/**
+ * Delete a document by ID.
+ * @param {string} documentId
+ * @returns {{ error }}
+ */
+export async function deleteDocument(documentId) {
+  const { error } = await supabase.from('documents').delete().eq('id', documentId);
+  return { error };
+}
+
+// ─────────────────────────────────────────────────────────────
+// Appointments (Profile Tab — fetches from existing appointments table)
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Fetch all appointments linked to a specific companion.
+ * @param {string} companionId
+ * @returns {{ data, error }}
+ */
+export async function fetchCompanionAppointments(companionId) {
+  if (!companionId) return { data: [], error: null };
+  const { data, error } = await supabase
+    .from('appointments')
+    .select('*')
+    .eq('compagnon_id', companionId)
+    .order('appointment_date', { ascending: false });
+  return { data: data || [], error };
+}
+
+// ─────────────────────────────────────────────────────────────
+// Formations (Profile Tab)
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Fetch all formations for a companion.
+ * @param {string} companionId
+ * @returns {{ data, error }}
+ */
+export async function fetchFormations(companionId) {
+  if (!companionId) return { data: [], error: null };
+  const { data, error } = await supabase
+    .from('formations')
+    .select('*')
+    .eq('compagnon_id', companionId)
+    .order('created_at', { ascending: false });
+  return { data: data || [], error };
+}
+
+/**
+ * Add a formation for a companion.
+ * @param {string} companionId
+ * @param {{ title: string, location?: string, status: string, progress: number }} payload
+ * @returns {{ data, error }}
+ */
+export async function addFormation(companionId, payload) {
+  const { data: { user }, error: authErr } = await supabase.auth.getUser();
+  if (authErr || !user) return { data: null, error: authErr || new Error('Non authentifié.') };
+
+  const { data, error } = await supabase
+    .from('formations')
+    .insert([{
+      compagnon_id: companionId,
+      title: payload.title,
+      location: payload.location || null,
+      status: payload.status || 'planifié',
+      progress: Number(payload.progress) || 0,
+      start_date: payload.start_date || null,
+      end_date: payload.end_date || null,
+      created_by: user.id,
+    }])
+    .select()
+    .single();
+  return { data, error };
+}
+
+/**
+ * Delete a formation by ID.
+ * @param {string} formationId
+ * @returns {{ error }}
+ */
+export async function deleteFormation(formationId) {
+  const { error } = await supabase.from('formations').delete().eq('id', formationId);
+  return { error };
+}
+
+// ─────────────────────────────────────────────────────────────
+// Skills (Profile Tab)
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Fetch all skills for a companion, grouped by category.
+ * Returns { techniques: [], soft: [], languages: [], digital: [] }
+ * @param {string} companionId
+ * @returns {{ data: object, error }}
+ */
+export async function fetchSkills(companionId) {
+  if (!companionId) return { data: { techniques: [], soft: [], languages: [], digital: [] }, error: null };
+  const { data, error } = await supabase
+    .from('skills')
+    .select('*')
+    .eq('compagnon_id', companionId)
+    .order('created_at', { ascending: true });
+
+  if (error) return { data: { techniques: [], soft: [], languages: [], digital: [] }, error };
+
+  const grouped = { techniques: [], soft: [], languages: [], digital: [] };
+  (data || []).forEach((s) => {
+    if (grouped[s.category]) grouped[s.category].push(s);
+  });
+  return { data: grouped, error: null };
+}
+
+/**
+ * Add a skill for a companion.
+ * @param {string} companionId
+ * @param {{ category: string, name: string, progress: number }} payload
+ * @returns {{ data, error }}
+ */
+export async function addSkill(companionId, payload) {
+  const { data: { user }, error: authErr } = await supabase.auth.getUser();
+  if (authErr || !user) return { data: null, error: authErr || new Error('Non authentifié.') };
+
+  const { data, error } = await supabase
+    .from('skills')
+    .insert([{
+      compagnon_id: companionId,
+      category: payload.category,
+      name: payload.name,
+      progress: Number(payload.progress) || 0,
+      created_by: user.id,
+    }])
+    .select()
+    .single();
+  return { data, error };
+}
+
+/**
+ * Delete a skill by ID.
+ * @param {string} skillId
+ * @returns {{ error }}
+ */
+export async function deleteSkill(skillId) {
+  const { error } = await supabase.from('skills').delete().eq('id', skillId);
+  return { error };
+}

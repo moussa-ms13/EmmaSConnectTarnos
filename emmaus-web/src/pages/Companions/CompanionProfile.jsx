@@ -1,70 +1,27 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Edit3, MessageSquare, CalendarPlus, MapPin, Phone, Mail,
   User, Heart, Droplets, Stethoscope, BookOpen, FileText, Award,
-  Calendar, Clock, AlertTriangle, TrendingUp, Activity, Loader2,
+  Calendar, Clock, AlertTriangle, Activity, Loader2,
   CheckCircle2, Globe, Cpu, Flag, Download, RefreshCw, ChevronRight,
+  Plus, X, Trash2, Upload,
 } from 'lucide-react';
-import { getCompanionById, updateCompanion } from '../../services/companionService';
+import {
+  getCompanionById, updateCompanion,
+  fetchDocuments, addDocument, deleteDocument,
+  fetchCompanionAppointments,
+  fetchFormations, addFormation, deleteFormation,
+  fetchSkills, addSkill, deleteSkill,
+} from '../../services/companionService';
 import { useAuth } from '../../components/auth/AuthProvider';
 import AppointmentModal from '../Appointments/AppointmentModal';
 import CompanionForm from './CompanionForm';
 import SendMessageModal from '../../components/layout/SendMessageModal';
 
 // ────────────────────────────────────────────────────────────
-// MOCK DATA — Used for UI-only fields with no DB columns yet
+// TABS configuration
 // ────────────────────────────────────────────────────────────
-const MOCK_DOCUMENTS = [
-  { id: 1, title: "Carte d'identité", expiry: '2028-06-15', status: 'valide',      icon: '🪪' },
-  { id: 2, title: 'Titre de séjour',  expiry: '2025-03-20', status: 'a_renouveler',icon: '📋' },
-  { id: 3, title: 'Passeport',        expiry: null,          status: 'manquant',    icon: '📕' },
-  { id: 4, title: 'Attestation CAF',  expiry: '2027-01-01', status: 'valide',      icon: '📄' },
-  { id: 5, title: 'RIB Bancaire',     expiry: null,          status: 'valide',      icon: '🏦' },
-  { id: 6, title: 'CV',               expiry: null,          status: 'valide',      icon: '📝' },
-];
-
-const MOCK_FORMATIONS = [
-  { id: 1, title: 'Formation PSC1',          location: 'Tarnos — 15 janv. 2024', status: 'obtenu',    progress: 100 },
-  { id: 2, title: 'Atelier Menuiserie Bois', location: 'Bayonne — 5 mars 2024',  status: 'en_cours',  progress: 65  },
-  { id: 3, title: 'Français Langue Étrangère', location: 'Tarnos — 1 sept. 2024', status: 'planifié', progress: 0  },
-];
-
-const MOCK_SKILLS = {
-  techniques: [
-    { name: 'Menuiserie bois',         pct: 70 },
-    { name: 'Peinture / rénovation',   pct: 45 },
-    { name: 'Jardinage',               pct: 60 },
-  ],
-  soft: [
-    { name: 'Ponctualité',             pct: 90 },
-    { name: 'Travail en équipe',       pct: 80 },
-    { name: 'Communication',           pct: 65 },
-  ],
-  languages: [
-    { name: 'Français',                pct: 70 },
-    { name: 'Arabe',                   pct: 95 },
-    { name: 'Anglais',                 pct: 30 },
-  ],
-  digital: [
-    { name: 'Bureautique (Word/Excel)', pct: 50 },
-    { name: 'Email / Internet',         pct: 65 },
-    { name: 'Smartphone',               pct: 80 },
-  ],
-};
-
-const MOCK_TIMELINE = [
-  { id: 1, label: 'Intégration',       date: '12 janv. 2024', color: 'bg-blue-500' },
-  { id: 2, label: 'Début formation',   date: '5 mars 2024',   color: 'bg-amber-500' },
-  { id: 3, label: 'Obtention PSC1',    date: '28 mars 2024',  color: 'bg-emerald-500' },
-  { id: 4, label: 'Atelier chantier', date: '10 juin 2024',  color: 'bg-purple-500' },
-];
-
-const MOCK_APPOINTMENTS = [
-  { id: 1, type: 'Médecin généraliste', doctor: 'Dr. Isabelle Leclerc', date: '2026-07-02T10:00', status: 'confirmé'   },
-  { id: 2, type: 'Dermatologue',        doctor: 'Dr. Laurent Morin',    date: '2026-07-28T09:30', status: 'a_confirmer' },
-];
-
 const TABS = [
   { key: 'informations', label: 'Informations' },
   { key: 'medical',      label: 'Médical'      },
@@ -72,6 +29,11 @@ const TABS = [
   { key: 'rendezvous',   label: 'Rendez-vous'  },
   { key: 'formations',   label: 'Formations'   },
   { key: 'competences',  label: 'Compétences'  },
+];
+
+// Minimal timeline — built from companion's real dates
+const MOCK_TIMELINE = [
+  { id: 1, label: 'Intégration',       date: '—', color: 'bg-blue-500'    },
 ];
 
 // ────────────────────────────────────────────────────────────
@@ -86,17 +48,6 @@ function toSafeString(val, fallback = '') {
     return String(val.name || val.label || val.value || val.first_name || val.title || fallback);
   }
   return String(val);
-}
-
-function computeAge(dateVal) {
-  if (!dateVal) return null;
-  const birth = new Date(dateVal);
-  if (isNaN(birth.getTime())) return null;
-  const today = new Date();
-  let age = today.getFullYear() - birth.getFullYear();
-  const m = today.getMonth() - birth.getMonth();
-  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
-  return isNaN(age) ? null : age;
 }
 
 function computeDaysSince(dateVal) {
@@ -151,20 +102,57 @@ function FormationBadge({ status }) {
   return <span className={`inline-block px-2.5 py-1 rounded-full text-xs font-semibold ${cls}`}>{label}</span>;
 }
 
-function SkillBar({ name, pct }) {
+function SkillBar({ name, pct, progress }) {
+  const val = pct ?? progress ?? 0;
   return (
     <div className="flex items-center gap-3">
       <span className="text-xs text-gray-600 w-36 shrink-0 truncate">{name}</span>
       <div className="flex-1 h-1.5 rounded-full bg-gray-100 overflow-hidden">
         <div
           className="h-full rounded-full bg-blue-600 transition-all duration-500"
-          style={{ width: `${pct}%` }}
+          style={{ width: `${val}%` }}
         />
       </div>
-      <span className="text-xs font-bold text-gray-700 w-8 text-right">{pct}%</span>
+      <span className="text-xs font-bold text-gray-700 w-8 text-right">{val}%</span>
     </div>
   );
 }
+
+function EmptyState({ icon: Icon, message, action }) {
+  return (
+    <div className="py-14 flex flex-col items-center text-center text-gray-400">
+      <Icon className="w-10 h-10 mb-3 text-gray-200" />
+      <p className="text-sm font-medium text-gray-400">{message}</p>
+      {action && (
+        <p className="text-xs text-gray-300 mt-1">{action}</p>
+      )}
+    </div>
+  );
+}
+
+// Reusable modal shell
+function ModalShell({ title, onClose, children }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+        <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between">
+          <h3 className="text-base font-bold text-gray-900">{title}</h3>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-2 rounded-xl hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="p-6 space-y-4">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+const INPUT_CLS = 'w-full px-3 py-2.5 rounded-xl border border-gray-200 bg-gray-50 text-sm text-gray-900 placeholder-gray-400 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all';
+const LABEL_CLS = 'block text-xs font-semibold text-gray-600 mb-1.5';
 
 // ────────────────────────────────────────────────────────────
 // Main Component
@@ -183,6 +171,34 @@ function CompanionProfile() {
   const [showMsgModal, setShowMsgModal] = useState(false);
   const [noteValue, setNoteValue] = useState('');
 
+  // ── Real data state for tabs ──────────────────────────────
+  const [documents, setDocuments] = useState([]);
+  const [docsLoading, setDocsLoading] = useState(false);
+
+  const [appointments, setAppointments] = useState([]);
+  const [aptsLoading, setAptsLoading] = useState(false);
+
+  const [formations, setFormations] = useState([]);
+  const [formationsLoading, setFormationsLoading] = useState(false);
+
+  const [skills, setSkills] = useState({ techniques: [], soft: [], languages: [], digital: [] });
+  const [skillsLoading, setSkillsLoading] = useState(false);
+
+  // ── Modal state for each tab ──────────────────────────────
+  const [showDocModal, setShowDocModal] = useState(false);
+  const [newDoc, setNewDoc] = useState({ title: '', status: 'valide', expiry_date: '', icon: '📄' });
+  const [docFile, setDocFile] = useState(null);
+  const [docSaving, setDocSaving] = useState(false);
+
+  const [showFormationModal, setShowFormationModal] = useState(false);
+  const [newFormation, setNewFormation] = useState({ title: '', location: '', status: 'planifié', progress: 0 });
+  const [formationSaving, setFormationSaving] = useState(false);
+
+  const [showSkillModal, setShowSkillModal] = useState(false);
+  const [newSkill, setNewSkill] = useState({ category: 'techniques', name: '', progress: 0 });
+  const [skillSaving, setSkillSaving] = useState(false);
+
+  // ── Load companion base data ──────────────────────────────
   useEffect(() => {
     async function load() {
       if (!id) { setError('Identifiant manquant.'); setLoading(false); return; }
@@ -202,6 +218,87 @@ function CompanionProfile() {
     load();
   }, [id]);
 
+  // ── Lazy-load tab data on tab switch ─────────────────────
+  const loadDocuments = useCallback(async () => {
+    setDocsLoading(true);
+    const { data } = await fetchDocuments(id);
+    setDocuments(data || []);
+    setDocsLoading(false);
+  }, [id]);
+
+  const loadAppointments = useCallback(async () => {
+    setAptsLoading(true);
+    const { data } = await fetchCompanionAppointments(id);
+    setAppointments(data || []);
+    setAptsLoading(false);
+  }, [id]);
+
+  const loadFormations = useCallback(async () => {
+    setFormationsLoading(true);
+    const { data } = await fetchFormations(id);
+    setFormations(data || []);
+    setFormationsLoading(false);
+  }, [id]);
+
+  const loadSkills = useCallback(async () => {
+    setSkillsLoading(true);
+    const { data } = await fetchSkills(id);
+    setSkills(data);
+    setSkillsLoading(false);
+  }, [id]);
+
+  useEffect(() => {
+    if (!id) return;
+    if (activeTab === 'documents')   loadDocuments();
+    if (activeTab === 'rendezvous')  loadAppointments();
+    if (activeTab === 'formations')  loadFormations();
+    if (activeTab === 'competences') loadSkills();
+  }, [activeTab, id, loadDocuments, loadAppointments, loadFormations, loadSkills]);
+
+  // ── Handlers: Add Document ────────────────────────────────
+  const handleAddDocument = async () => {
+    if (!newDoc.title.trim()) return;
+    setDocSaving(true);
+    const { data, error: saveErr } = await addDocument(id, newDoc, docFile);
+    setDocSaving(false);
+    if (!saveErr && data) {
+      setDocuments((prev) => [data, ...prev]);
+      setNewDoc({ title: '', status: 'valide', expiry_date: '', icon: '📄' });
+      setDocFile(null);
+      setShowDocModal(false);
+    }
+  };
+
+  // ── Handlers: Add Formation ───────────────────────────────
+  const handleAddFormation = async () => {
+    if (!newFormation.title.trim()) return;
+    setFormationSaving(true);
+    const { data, error: saveErr } = await addFormation(id, newFormation);
+    setFormationSaving(false);
+    if (!saveErr && data) {
+      setFormations((prev) => [data, ...prev]);
+      setNewFormation({ title: '', location: '', status: 'planifié', progress: 0 });
+      setShowFormationModal(false);
+    }
+  };
+
+  // ── Handlers: Add Skill ───────────────────────────────────
+  const handleAddSkill = async () => {
+    if (!newSkill.name.trim()) return;
+    setSkillSaving(true);
+    const { data, error: saveErr } = await addSkill(id, newSkill);
+    setSkillSaving(false);
+    if (!saveErr && data) {
+      setSkills((prev) => ({
+        ...prev,
+        [newSkill.category]: [...(prev[newSkill.category] || []), data],
+      }));
+      setNewSkill({ category: 'techniques', name: '', progress: 0 });
+      setShowSkillModal(false);
+    }
+  };
+
+  // ─────────────────────────────────────────────────────────
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center py-32 bg-gray-50 min-h-screen">
@@ -229,56 +326,63 @@ function CompanionProfile() {
     );
   }
 
-  // ── Derived data ─────────────────────────────────────────────
+  // ── Derived data ─────────────────────────────────────────
   const c = companion;
-  const firstName     = toSafeString(c.first_name || c.prenom, 'Mohamed');
-  const lastName      = toSafeString(c.last_name  || c.nom,    'Diallo');
+  const firstName     = toSafeString(c.first_name || c.prenom, 'Compagnon');
+  const lastName      = toSafeString(c.last_name  || c.nom,    '');
   const fullName      = `${firstName} ${lastName}`.trim();
-  const initials      = `${firstName[0] || 'M'}${lastName[0] || 'D'}`.toUpperCase();
-  const profession    = toSafeString(c.profession, 'Atelier Menuiserie');
+  const initials      = `${firstName[0] || 'C'}${lastName[0] || ''}`.toUpperCase();
+  const profession    = toSafeString(c.profession, '');
   const joinDateStr   = formatDate(c.join_date || c.created_at || c.date_inscription);
-  const joinDateShort = formatDateShort(c.join_date || c.created_at || c.date_inscription);
+  const joinDateShort = joinDateStr;
   const dobStr        = formatDate(c.date_of_birth || c.date_naissance);
   const nationality   = toSafeString(c.nationality || c.nationalite, 'Non renseignée');
-  const gender        = toSafeString(c.gender || c.sexe, '—');
-  const phoneStr      = toSafeString(c.phone || c.telephone, '06 12 34 56 78');
-  const emailStr      = toSafeString(c.email, 'contact@exemple.fr');
-  const cityStr       = toSafeString(c.city || c.ville, 'Tarnos');
-  const postalStr     = toSafeString(c.postal_code || c.code_postal, '40220');
+  const phoneStr      = toSafeString(c.phone || c.telephone, '—');
+  const emailStr      = toSafeString(c.email, '—');
+  const cityStr       = toSafeString(c.city || c.ville, '—');
+  const postalStr     = toSafeString(c.postal_code || c.code_postal, '');
   const addressStr    = c.address || c.adresse
     ? `${toSafeString(c.address || c.adresse)}, ${postalStr} ${cityStr}`
     : `—`;
 
   const daysSinceJoin = computeDaysSince(c.join_date || c.created_at);
-  const progressPct   = Math.min(100, Math.max(0, Number(c.stats?.formations || 78)));
+  const progressPct   = Math.min(100, Math.max(0, Number(c.stats?.formations || 0)));
 
-  // Formations & docs counts from mock (replace with DB data when available)
-  const formationsDone  = MOCK_FORMATIONS.filter((f) => f.status === 'obtenu').length;
-  const formationsTotal = MOCK_FORMATIONS.length;
-  const documentsDone   = MOCK_DOCUMENTS.filter((d) => d.status === 'valide').length;
-  const documentsTotal  = MOCK_DOCUMENTS.length;
+  // Computed counts from real state
+  const formationsDone  = formations.filter((f) => f.status === 'obtenu').length;
+  const formationsTotal = formations.length;
+  const documentsDone   = documents.filter((d) => d.status === 'valide').length;
+  const documentsTotal  = documents.length;
 
   // Medical
   const med          = c.medical_record || c.medical_info || c.medical || {};
-  const bloodType    = toSafeString(med.blood_type || med.groupe_sanguin, 'A+');
-  const doctorName   = toSafeString(med.doctor_name || med.medecin_traitant, 'Dr. Isabelle Leclerc');
-  const allergies    = toSafeString(med.allergies, 'Pénicilline');
+  const bloodType    = toSafeString(med.blood_type || med.groupe_sanguin, '—');
+  const doctorName   = toSafeString(med.doctor_name || med.medecin_traitant, '—');
+  const allergies    = toSafeString(med.allergies, 'Aucune');
   const rawPaths     = med.pathologiesList || med.pathologies;
   const pathologies  = Array.isArray(rawPaths) && rawPaths.length
     ? rawPaths.map((p) => toSafeString(p)).filter(Boolean)
     : typeof rawPaths === 'string' && rawPaths.trim()
     ? rawPaths.split(',').map((s) => s.trim()).filter(Boolean)
-    : ['Hypertension artérielle', 'Diabète type 2'];
+    : [];
 
   // Referent
   const ref         = c.referent || c.benevole_referent || {};
   const referentName = typeof ref === 'object' && ref !== null
-    ? (`${toSafeString(ref.first_name)} ${toSafeString(ref.last_name)}`.trim()) || toSafeString(ref.name, 'Sophie Renaud')
-    : toSafeString(ref, 'Sophie Renaud');
+    ? (`${toSafeString(ref.first_name)} ${toSafeString(ref.last_name)}`.trim()) || toSafeString(ref.name, '—')
+    : toSafeString(ref, '—');
 
-  // Appointments
-  const aptsList = Array.isArray(c.appointments) && c.appointments.length
-    ? c.appointments : MOCK_APPOINTMENTS;
+  // Timeline — use real join date if available
+  const timeline = [
+    { id: 1, label: 'Intégration', date: joinDateShort, color: 'bg-blue-500' },
+  ];
+
+  const SKILL_CATEGORIES = [
+    { key: 'techniques', label: 'Savoir-faire techniques', icon: Award,        color: 'text-amber-500'   },
+    { key: 'soft',       label: 'Savoir-être',             icon: CheckCircle2, color: 'text-emerald-500' },
+    { key: 'languages',  label: 'Langues',                 icon: Globe,        color: 'text-blue-500'    },
+    { key: 'digital',    label: 'Numérique',               icon: Cpu,          color: 'text-purple-500'  },
+  ];
 
   return (
     <div className="min-h-screen bg-gray-50 -m-8">
@@ -312,7 +416,6 @@ function CompanionProfile() {
 
             {/* LEFT — Avatar + Identity */}
             <div className="flex items-start gap-5 flex-1">
-              {/* Avatar */}
               <div className="relative shrink-0">
                 {c.avatar_url ? (
                   <img
@@ -329,46 +432,49 @@ function CompanionProfile() {
               </div>
 
               <div className="space-y-2 flex-1">
-                {/* Name + badge */}
                 <div className="flex flex-wrap items-center gap-3">
                   <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight leading-tight">{fullName}</h1>
                   <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700">
                     <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                    Actif
+                    {toSafeString(c.status, 'Actif')}
                   </span>
                 </div>
-
-                {/* Subtitle */}
-                <p className="text-sm text-blue-200 font-normal">
-                  {profession} &bull; Entré le {joinDateShort}
-                </p>
-
-                {/* Contact row */}
+                {profession && (
+                  <p className="text-sm text-blue-200 font-normal">
+                    {profession} &bull; Entré le {joinDateShort}
+                  </p>
+                )}
                 <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 text-xs text-blue-200 pt-1">
-                  <span className="flex items-center gap-1.5">
-                    <MapPin className="w-3.5 h-3.5 text-blue-300 shrink-0" />{cityStr}
-                  </span>
-                  <span className="flex items-center gap-1.5">
-                    <Phone className="w-3.5 h-3.5 text-blue-300 shrink-0" />{phoneStr}
-                  </span>
-                  <span className="flex items-center gap-1.5">
-                    <Mail className="w-3.5 h-3.5 text-blue-300 shrink-0" />{emailStr}
-                  </span>
+                  {cityStr !== '—' && (
+                    <span className="flex items-center gap-1.5">
+                      <MapPin className="w-3.5 h-3.5 text-blue-300 shrink-0" />{cityStr}
+                    </span>
+                  )}
+                  {phoneStr !== '—' && (
+                    <span className="flex items-center gap-1.5">
+                      <Phone className="w-3.5 h-3.5 text-blue-300 shrink-0" />{phoneStr}
+                    </span>
+                  )}
+                  {emailStr !== '—' && (
+                    <span className="flex items-center gap-1.5">
+                      <Mail className="w-3.5 h-3.5 text-blue-300 shrink-0" />{emailStr}
+                    </span>
+                  )}
                 </div>
-
-                {/* Progress bar */}
-                <div className="pt-3 max-w-md">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-xs text-blue-200 font-medium">Progression globale</span>
-                    <span className="text-xs font-bold text-white">{progressPct}%</span>
+                {progressPct > 0 && (
+                  <div className="pt-3 max-w-md">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-xs text-blue-200 font-medium">Progression globale</span>
+                      <span className="text-xs font-bold text-white">{progressPct}%</span>
+                    </div>
+                    <div className="w-full h-2 rounded-full bg-white/15 overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-blue-400 transition-all duration-700"
+                        style={{ width: `${progressPct}%` }}
+                      />
+                    </div>
                   </div>
-                  <div className="w-full h-2 rounded-full bg-white/15 overflow-hidden">
-                    <div
-                      className="h-full rounded-full bg-blue-400 transition-all duration-700"
-                      style={{ width: `${progressPct}%` }}
-                    />
-                  </div>
-                </div>
+                )}
               </div>
             </div>
 
@@ -409,7 +515,7 @@ function CompanionProfile() {
           <div className="mt-6 grid grid-cols-3 gap-0 border-t border-white/10 pt-5 pb-0 divide-x divide-white/10">
             <div className="flex items-center gap-3 pr-6">
               <div className="w-9 h-9 rounded-lg bg-white/10 flex items-center justify-center shrink-0">
-                <BookOpen className="w-4.5 h-4.5 text-blue-300" />
+                <BookOpen className="w-5 h-5 text-blue-300" />
               </div>
               <div>
                 <p className="text-lg font-extrabold text-white leading-tight">{formationsDone}/{formationsTotal}</p>
@@ -418,7 +524,7 @@ function CompanionProfile() {
             </div>
             <div className="flex items-center gap-3 px-6">
               <div className="w-9 h-9 rounded-lg bg-white/10 flex items-center justify-center shrink-0">
-                <FileText className="w-4.5 h-4.5 text-blue-300" />
+                <FileText className="w-5 h-5 text-blue-300" />
               </div>
               <div>
                 <p className="text-lg font-extrabold text-white leading-tight">{documentsDone}/{documentsTotal}</p>
@@ -427,7 +533,7 @@ function CompanionProfile() {
             </div>
             <div className="flex items-center gap-3 pl-6">
               <div className="w-9 h-9 rounded-lg bg-white/10 flex items-center justify-center shrink-0">
-                <Calendar className="w-4.5 h-4.5 text-blue-300" />
+                <Calendar className="w-5 h-5 text-blue-300" />
               </div>
               <div>
                 <p className="text-lg font-extrabold text-white leading-tight">{daysSinceJoin ?? '—'}</p>
@@ -464,14 +570,10 @@ function CompanionProfile() {
         {/* ─── TAB: Informations ─── */}
         {activeTab === 'informations' && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-
-            {/* Left col */}
             <div className="lg:col-span-2 space-y-6">
-
-              {/* Informations personnelles */}
               <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
                 <div className="flex items-center gap-2.5 pb-4 mb-4 border-b border-gray-100">
-                  <User className="w-4.5 h-4.5 text-blue-600" />
+                  <User className="w-5 h-5 text-blue-600" />
                   <h3 className="text-sm font-bold text-gray-900">Informations personnelles</h3>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-3">
@@ -486,7 +588,7 @@ function CompanionProfile() {
                   ].map(({ label, value, full }) => (
                     <div key={label} className={`flex justify-between text-sm gap-4 ${full ? 'sm:col-span-2' : ''}`}>
                       <span className="text-gray-400 shrink-0">{label}</span>
-                      <span className="font-semibold text-gray-900 text-right">{value}</span>
+                      <span className="font-semibold text-gray-900 text-right">{value || '—'}</span>
                     </div>
                   ))}
                 </div>
@@ -495,13 +597,13 @@ function CompanionProfile() {
               {/* Historique */}
               <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
                 <div className="flex items-center gap-2.5 pb-4 mb-4 border-b border-gray-100">
-                  <Clock className="w-4.5 h-4.5 text-amber-500" />
+                  <Clock className="w-5 h-5 text-amber-500" />
                   <h3 className="text-sm font-bold text-gray-900">Historique</h3>
                 </div>
                 <div className="relative pl-4">
                   <div className="absolute left-1.5 top-0 bottom-0 w-px bg-gray-100" />
                   <div className="space-y-5">
-                    {MOCK_TIMELINE.map((ev) => (
+                    {timeline.map((ev) => (
                       <div key={ev.id} className="flex items-start gap-3 relative">
                         <span className={`absolute -left-3.5 top-1.5 w-2.5 h-2.5 rounded-full border-2 border-white ${ev.color} shrink-0`} />
                         <div>
@@ -515,29 +617,30 @@ function CompanionProfile() {
               </div>
             </div>
 
-            {/* Right col */}
             <div className="space-y-6">
               {/* Responsable */}
-              <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-                <div className="flex items-center gap-2.5 pb-4 mb-4 border-b border-gray-100">
-                  <User className="w-4.5 h-4.5 text-purple-500" />
-                  <h3 className="text-sm font-bold text-gray-900">Responsable</h3>
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center text-sm font-bold text-purple-700 shrink-0">
-                    {referentName.split(' ').map((n) => n[0] || '').join('').slice(0, 2).toUpperCase()}
+              {referentName !== '—' && (
+                <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+                  <div className="flex items-center gap-2.5 pb-4 mb-4 border-b border-gray-100">
+                    <User className="w-5 h-5 text-purple-500" />
+                    <h3 className="text-sm font-bold text-gray-900">Responsable</h3>
                   </div>
-                  <div>
-                    <p className="text-sm font-semibold text-gray-900">{referentName}</p>
-                    <p className="text-xs text-gray-400">Bénévole référent</p>
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center text-sm font-bold text-purple-700 shrink-0">
+                      {referentName.split(' ').map((n) => n[0] || '').join('').slice(0, 2).toUpperCase()}
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-gray-900">{referentName}</p>
+                      <p className="text-xs text-gray-400">Bénévole référent</p>
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
 
               {/* Note interne */}
               <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
                 <div className="flex items-center gap-2.5 pb-4 mb-4 border-b border-gray-100">
-                  <FileText className="w-4.5 h-4.5 text-gray-500" />
+                  <FileText className="w-5 h-5 text-gray-500" />
                   <h3 className="text-sm font-bold text-gray-900">Note interne</h3>
                 </div>
                 {canEdit ? (
@@ -561,10 +664,9 @@ function CompanionProfile() {
           <div className="max-w-2xl space-y-5">
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 space-y-5">
               <div className="flex items-center gap-2.5 pb-4 border-b border-gray-100">
-                <Heart className="w-4.5 h-4.5 text-red-500" />
+                <Heart className="w-5 h-5 text-red-500" />
                 <h3 className="text-sm font-bold text-gray-900">Résumé médical</h3>
               </div>
-              {/* Blood type */}
               <div className="flex items-center gap-4 p-4 rounded-xl bg-red-50/70 border border-red-100">
                 <Droplets className="w-5 h-5 text-red-500 shrink-0" />
                 <div>
@@ -572,7 +674,6 @@ function CompanionProfile() {
                   <p className="text-sm font-bold text-gray-900 mt-0.5">{bloodType}</p>
                 </div>
               </div>
-              {/* Doctor */}
               <div className="flex items-center gap-4 p-4 rounded-xl bg-blue-50/70 border border-blue-100">
                 <Stethoscope className="w-5 h-5 text-blue-500 shrink-0" />
                 <div>
@@ -580,23 +681,26 @@ function CompanionProfile() {
                   <p className="text-sm font-bold text-gray-900 mt-0.5">{doctorName}</p>
                 </div>
               </div>
-              {/* Allergies */}
               <div>
                 <p className="text-xs font-semibold text-gray-400 mb-2">Allergies</p>
                 <span className="inline-block px-3 py-1 rounded-full bg-red-100 text-red-700 text-xs font-semibold">{allergies}</span>
               </div>
-              {/* Pathologies */}
-              <div>
-                <p className="text-xs font-semibold text-gray-400 mb-2">Pathologies</p>
-                <ul className="space-y-2">
-                  {pathologies.map((p, i) => (
-                    <li key={i} className="flex items-center gap-2.5 text-sm text-gray-700">
-                      <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
-                      {p}
-                    </li>
-                  ))}
-                </ul>
-              </div>
+              {pathologies.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-400 mb-2">Pathologies</p>
+                  <ul className="space-y-2">
+                    {pathologies.map((p, i) => (
+                      <li key={i} className="flex items-center gap-2.5 text-sm text-gray-700">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
+                        {p}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {pathologies.length === 0 && (
+                <p className="text-xs text-gray-400">Aucune pathologie enregistrée.</p>
+              )}
             </div>
           </div>
         )}
@@ -605,44 +709,75 @@ function CompanionProfile() {
         {activeTab === 'documents' && (
           <div>
             <div className="flex items-center justify-between mb-5">
-              <h3 className="text-base font-bold text-gray-900">Documents ({MOCK_DOCUMENTS.length})</h3>
+              <h3 className="text-base font-bold text-gray-900">
+                Documents {documents.length > 0 ? `(${documents.length})` : ''}
+              </h3>
               {canAdd && (
-                <button className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-colors">
-                  + Ajouter un document
+                <button
+                  type="button"
+                  onClick={() => setShowDocModal(true)}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                  Ajouter un document
                 </button>
               )}
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {MOCK_DOCUMENTS.map((doc) => (
-                <div key={doc.id} className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 relative flex flex-col gap-3">
-                  {/* Status badge top-right */}
-                  <div className="absolute top-4 right-4">
-                    <DocStatusBadge status={doc.status} />
-                  </div>
-                  {/* Icon + title */}
-                  <div className="flex items-start gap-3 pr-20">
-                    <span className="text-2xl">{doc.icon}</span>
-                    <div>
-                      <p className="text-sm font-bold text-gray-900">{doc.title}</p>
-                      <p className="text-xs text-gray-400 mt-0.5">
-                        {doc.expiry ? `Expire le ${formatDateShort(doc.expiry)}` : 'Pas de date d\'expiration'}
-                      </p>
+
+            {docsLoading ? (
+              <div className="flex items-center justify-center py-16">
+                <Loader2 className="w-7 h-7 text-blue-500 animate-spin" />
+              </div>
+            ) : documents.length === 0 ? (
+              <EmptyState
+                icon={FileText}
+                message="Aucun document enregistré."
+                action={canAdd ? 'Cliquez sur « Ajouter un document » pour commencer.' : undefined}
+              />
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {documents.map((doc) => (
+                  <div key={doc.id} className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 relative flex flex-col gap-3">
+                    <div className="absolute top-4 right-4">
+                      <DocStatusBadge status={doc.status} />
+                    </div>
+                    <div className="flex items-start gap-3 pr-20">
+                      <span className="text-2xl">{doc.icon || '📄'}</span>
+                      <div>
+                        <p className="text-sm font-bold text-gray-900">{doc.title}</p>
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          {doc.expiry_date ? `Expire le ${formatDateShort(doc.expiry_date)}` : 'Pas de date d\'expiration'}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 pt-1 border-t border-gray-100">
+                      {doc.file_url && (
+                        <a
+                          href={doc.file_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-600 hover:text-blue-600 transition-colors"
+                        >
+                          <Download className="w-3.5 h-3.5" />Télécharger
+                        </a>
+                      )}
+                      {canEdit && (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            await deleteDocument(doc.id);
+                            setDocuments((prev) => prev.filter((d) => d.id !== doc.id));
+                          }}
+                          className="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-400 hover:text-red-600 transition-colors ml-auto"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
                   </div>
-                  {/* Actions */}
-                  <div className="flex items-center gap-2 pt-1 border-t border-gray-100">
-                    <button className="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-600 hover:text-blue-600 transition-colors">
-                      <Download className="w-3.5 h-3.5" />Télécharger
-                    </button>
-                    {canEdit && (
-                      <button className="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-600 hover:text-amber-600 transition-colors ml-auto">
-                        <RefreshCw className="w-3.5 h-3.5" />Mettre à jour
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -662,21 +797,34 @@ function CompanionProfile() {
                 </button>
               )}
             </div>
-            {aptsList.map((apt, idx) => (
-              <div key={apt.id || idx} className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold ${
-                    apt.status === 'confirmé' ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'
-                  }`}>
-                    <span className={`w-1.5 h-1.5 rounded-full ${apt.status === 'confirmé' ? 'bg-emerald-500' : 'bg-blue-500'}`} />
-                    {apt.status === 'confirmé' ? 'Confirmé' : 'À confirmer'}
-                  </span>
-                  <span className="text-xs text-gray-400">{formatDateShort(apt.date)}</span>
-                </div>
-                <p className="text-sm font-bold text-gray-900">{toSafeString(apt.type, 'Rendez-vous')}</p>
-                <p className="text-xs text-gray-500">{toSafeString(apt.doctor || apt.specialty, '—')}</p>
+
+            {aptsLoading ? (
+              <div className="flex items-center justify-center py-16">
+                <Loader2 className="w-7 h-7 text-blue-500 animate-spin" />
               </div>
-            ))}
+            ) : appointments.length === 0 ? (
+              <EmptyState
+                icon={Calendar}
+                message="Aucun rendez-vous planifié."
+                action={canAdd ? 'Cliquez sur « Planifier un RDV » pour en ajouter un.' : undefined}
+              />
+            ) : (
+              appointments.map((apt, idx) => (
+                <div key={apt.id || idx} className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold ${
+                      apt.status === 'confirmé' ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'
+                    }`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${apt.status === 'confirmé' ? 'bg-emerald-500' : 'bg-blue-500'}`} />
+                      {apt.status === 'confirmé' ? 'Confirmé' : toSafeString(apt.status, 'À confirmer')}
+                    </span>
+                    <span className="text-xs text-gray-400">{formatDateShort(apt.appointment_date || apt.date)}</span>
+                  </div>
+                  <p className="text-sm font-bold text-gray-900">{toSafeString(apt.specialty || apt.type || apt.title, 'Rendez-vous')}</p>
+                  <p className="text-xs text-gray-500">{toSafeString(apt.doctor_name || apt.doctor || apt.location, '—')}</p>
+                </div>
+              ))
+            )}
           </div>
         )}
 
@@ -684,97 +832,159 @@ function CompanionProfile() {
         {activeTab === 'formations' && (
           <div className="max-w-2xl space-y-4">
             <div className="flex items-center justify-between mb-5">
-              <h3 className="text-base font-bold text-gray-900">Formations ({MOCK_FORMATIONS.length})</h3>
+              <h3 className="text-base font-bold text-gray-900">
+                Formations {formations.length > 0 ? `(${formations.length})` : ''}
+              </h3>
+              {canAdd && (
+                <button
+                  type="button"
+                  onClick={() => setShowFormationModal(true)}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                  Ajouter une formation
+                </button>
+              )}
             </div>
-            {MOCK_FORMATIONS.map((f) => (
-              <div key={f.id} className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 space-y-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-bold text-gray-900">{f.title}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">{f.location}</p>
-                  </div>
-                  <FormationBadge status={f.status} />
-                </div>
-                <div>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-xs text-gray-500 font-medium">Avancement</span>
-                    <span className="text-xs font-bold text-gray-700">{f.progress}%</span>
-                  </div>
-                  <div className="w-full h-1.5 rounded-full bg-gray-100 overflow-hidden">
-                    <div
-                      className={`h-full rounded-full transition-all duration-500 ${
-                        f.status === 'obtenu' ? 'bg-emerald-500' : f.status === 'en_cours' ? 'bg-blue-500' : 'bg-gray-300'
-                      }`}
-                      style={{ width: `${f.progress}%` }}
-                    />
-                  </div>
-                </div>
+
+            {formationsLoading ? (
+              <div className="flex items-center justify-center py-16">
+                <Loader2 className="w-7 h-7 text-blue-500 animate-spin" />
               </div>
-            ))}
+            ) : formations.length === 0 ? (
+              <EmptyState
+                icon={BookOpen}
+                message="Aucune formation enregistrée."
+                action={canAdd ? 'Cliquez sur « Ajouter une formation » pour commencer.' : undefined}
+              />
+            ) : (
+              formations.map((f) => (
+                <div key={f.id} className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-gray-900">{f.title}</p>
+                      {f.location && <p className="text-xs text-gray-400 mt-0.5">{f.location}</p>}
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <FormationBadge status={f.status} />
+                      {canEdit && (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            await deleteFormation(f.id);
+                            setFormations((prev) => prev.filter((x) => x.id !== f.id));
+                          }}
+                          className="p-1 rounded text-gray-300 hover:text-red-500 transition-colors"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-xs text-gray-500 font-medium">Avancement</span>
+                      <span className="text-xs font-bold text-gray-700">{f.progress}%</span>
+                    </div>
+                    <div className="w-full h-1.5 rounded-full bg-gray-100 overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all duration-500 ${
+                          f.status === 'obtenu' ? 'bg-emerald-500' : f.status === 'en_cours' ? 'bg-blue-500' : 'bg-gray-300'
+                        }`}
+                        style={{ width: `${f.progress}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         )}
 
         {/* ─── TAB: Compétences ─── */}
         {activeTab === 'competences' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Savoir-faire techniques */}
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-              <div className="flex items-center gap-2.5 pb-4 mb-4 border-b border-gray-100">
-                <Award className="w-4.5 h-4.5 text-amber-500" />
-                <h3 className="text-sm font-bold text-gray-900">Savoir-faire techniques</h3>
-              </div>
-              <div className="space-y-4">
-                {MOCK_SKILLS.techniques.map((s) => <SkillBar key={s.name} {...s} />)}
-              </div>
+          <div>
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="text-base font-bold text-gray-900">Compétences</h3>
+              {canAdd && (
+                <button
+                  type="button"
+                  onClick={() => setShowSkillModal(true)}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                  Ajouter une compétence
+                </button>
+              )}
             </div>
 
-            {/* Savoir-être */}
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-              <div className="flex items-center gap-2.5 pb-4 mb-4 border-b border-gray-100">
-                <CheckCircle2 className="w-4.5 h-4.5 text-emerald-500" />
-                <h3 className="text-sm font-bold text-gray-900">Savoir-être</h3>
+            {skillsLoading ? (
+              <div className="flex items-center justify-center py-16">
+                <Loader2 className="w-7 h-7 text-blue-500 animate-spin" />
               </div>
-              <div className="space-y-4">
-                {MOCK_SKILLS.soft.map((s) => <SkillBar key={s.name} {...s} />)}
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {SKILL_CATEGORIES.map(({ key, label, icon: Icon, color }) => (
+                  <div key={key} className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+                    <div className="flex items-center gap-2.5 pb-4 mb-4 border-b border-gray-100">
+                      <Icon className={`w-5 h-5 ${color}`} />
+                      <h3 className="text-sm font-bold text-gray-900">{label}</h3>
+                    </div>
+                    <div className="space-y-4">
+                      {(skills[key] || []).length === 0 ? (
+                        <p className="text-xs text-gray-300 text-center py-4">
+                          Aucune compétence. {canAdd ? 'Cliquez sur Ajouter.' : ''}
+                        </p>
+                      ) : (
+                        (skills[key] || []).map((s) => (
+                          <div key={s.id} className="flex items-center gap-2 group">
+                            <div className="flex-1">
+                              <SkillBar name={s.name} pct={s.progress} />
+                            </div>
+                            {canEdit && (
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  await deleteSkill(s.id);
+                                  setSkills((prev) => ({
+                                    ...prev,
+                                    [key]: prev[key].filter((x) => x.id !== s.id),
+                                  }));
+                                }}
+                                className="opacity-0 group-hover:opacity-100 p-1 rounded text-gray-300 hover:text-red-500 transition-all"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            )}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                ))}
               </div>
-            </div>
-
-            {/* Langues */}
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-              <div className="flex items-center gap-2.5 pb-4 mb-4 border-b border-gray-100">
-                <Globe className="w-4.5 h-4.5 text-blue-500" />
-                <h3 className="text-sm font-bold text-gray-900">Langues</h3>
-              </div>
-              <div className="space-y-4">
-                {MOCK_SKILLS.languages.map((s) => <SkillBar key={s.name} {...s} />)}
-              </div>
-            </div>
-
-            {/* Numérique */}
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-              <div className="flex items-center gap-2.5 pb-4 mb-4 border-b border-gray-100">
-                <Cpu className="w-4.5 h-4.5 text-purple-500" />
-                <h3 className="text-sm font-bold text-gray-900">Numérique</h3>
-              </div>
-              <div className="space-y-4">
-                {MOCK_SKILLS.digital.map((s) => <SkillBar key={s.name} {...s} />)}
-              </div>
-            </div>
+            )}
           </div>
         )}
       </div>
 
       {/* ─── Modals ─── */}
+
+      {/* Appointment Modal */}
       {showAppointmentModal && c && (
         <AppointmentModal
           appointment={null}
           companions={[c]}
           defaultCompanionId={c.id}
-          onSuccess={() => setShowAppointmentModal(false)}
+          onSuccess={() => {
+            setShowAppointmentModal(false);
+            if (activeTab === 'rendezvous') loadAppointments();
+          }}
           onClose={() => setShowAppointmentModal(false)}
         />
       )}
 
+      {/* Edit Companion Modal */}
       {showEditModal && c && (
         <CompanionForm
           companion={companion}
@@ -794,12 +1004,221 @@ function CompanionProfile() {
         />
       )}
 
+      {/* Send Message Modal */}
       <SendMessageModal
         isOpen={showMsgModal}
         onClose={() => setShowMsgModal(false)}
         defaultReceiverName={`${toSafeString(companion?.first_name)} ${toSafeString(companion?.last_name)}`.trim() || 'Compagnon'}
         defaultReceiverId={companion?.id}
       />
+
+      {/* ─── Add Document Modal ─── */}
+      {showDocModal && (
+        <ModalShell title="Ajouter un document" onClose={() => setShowDocModal(false)}>
+          <div>
+            <label className={LABEL_CLS}>Titre <span className="text-red-500">*</span></label>
+            <input
+              type="text"
+              value={newDoc.title}
+              onChange={(e) => setNewDoc((p) => ({ ...p, title: e.target.value }))}
+              placeholder="Ex: Carte d'identité"
+              className={INPUT_CLS}
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className={LABEL_CLS}>Statut</label>
+              <select
+                value={newDoc.status}
+                onChange={(e) => setNewDoc((p) => ({ ...p, status: e.target.value }))}
+                className={INPUT_CLS}
+              >
+                <option value="valide">Valide</option>
+                <option value="a_renouveler">À renouveler</option>
+                <option value="manquant">Manquant</option>
+              </select>
+            </div>
+            <div>
+              <label className={LABEL_CLS}>Date d'expiration</label>
+              <input
+                type="date"
+                value={newDoc.expiry_date}
+                onChange={(e) => setNewDoc((p) => ({ ...p, expiry_date: e.target.value }))}
+                className={INPUT_CLS}
+              />
+            </div>
+          </div>
+          <div>
+            <label className={LABEL_CLS}>Icône (emoji)</label>
+            <input
+              type="text"
+              value={newDoc.icon}
+              onChange={(e) => setNewDoc((p) => ({ ...p, icon: e.target.value }))}
+              placeholder="📄"
+              className={INPUT_CLS}
+            />
+          </div>
+          <div>
+            <label className={LABEL_CLS}>Fichier (optionnel)</label>
+            <label className="flex items-center gap-3 px-3 py-2.5 rounded-xl border border-dashed border-gray-300 bg-gray-50 cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-all">
+              <Upload className="w-4 h-4 text-gray-400" />
+              <span className="text-sm text-gray-500">
+                {docFile ? docFile.name : 'Choisir un fichier...'}
+              </span>
+              <input
+                type="file"
+                className="hidden"
+                onChange={(e) => setDocFile(e.target.files?.[0] || null)}
+              />
+            </label>
+          </div>
+          <div className="flex items-center gap-3 pt-2">
+            <button
+              type="button"
+              onClick={() => setShowDocModal(false)}
+              className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
+            >
+              Annuler
+            </button>
+            <button
+              type="button"
+              onClick={handleAddDocument}
+              disabled={!newDoc.title.trim() || docSaving}
+              className="flex-1 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+            >
+              {docSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+              Enregistrer
+            </button>
+          </div>
+        </ModalShell>
+      )}
+
+      {/* ─── Add Formation Modal ─── */}
+      {showFormationModal && (
+        <ModalShell title="Ajouter une formation" onClose={() => setShowFormationModal(false)}>
+          <div>
+            <label className={LABEL_CLS}>Titre <span className="text-red-500">*</span></label>
+            <input
+              type="text"
+              value={newFormation.title}
+              onChange={(e) => setNewFormation((p) => ({ ...p, title: e.target.value }))}
+              placeholder="Ex: Formation PSC1"
+              className={INPUT_CLS}
+            />
+          </div>
+          <div>
+            <label className={LABEL_CLS}>Lieu / Date</label>
+            <input
+              type="text"
+              value={newFormation.location}
+              onChange={(e) => setNewFormation((p) => ({ ...p, location: e.target.value }))}
+              placeholder="Ex: Tarnos — 15 janv. 2024"
+              className={INPUT_CLS}
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className={LABEL_CLS}>Statut</label>
+              <select
+                value={newFormation.status}
+                onChange={(e) => setNewFormation((p) => ({ ...p, status: e.target.value }))}
+                className={INPUT_CLS}
+              >
+                <option value="planifié">Planifié</option>
+                <option value="en_cours">En cours</option>
+                <option value="obtenu">Obtenu</option>
+              </select>
+            </div>
+            <div>
+              <label className={LABEL_CLS}>Avancement (%)</label>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                value={newFormation.progress}
+                onChange={(e) => setNewFormation((p) => ({ ...p, progress: Number(e.target.value) }))}
+                className={INPUT_CLS}
+              />
+            </div>
+          </div>
+          <div className="flex items-center gap-3 pt-2">
+            <button
+              type="button"
+              onClick={() => setShowFormationModal(false)}
+              className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
+            >
+              Annuler
+            </button>
+            <button
+              type="button"
+              onClick={handleAddFormation}
+              disabled={!newFormation.title.trim() || formationSaving}
+              className="flex-1 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+            >
+              {formationSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+              Enregistrer
+            </button>
+          </div>
+        </ModalShell>
+      )}
+
+      {/* ─── Add Skill Modal ─── */}
+      {showSkillModal && (
+        <ModalShell title="Ajouter une compétence" onClose={() => setShowSkillModal(false)}>
+          <div>
+            <label className={LABEL_CLS}>Catégorie</label>
+            <select
+              value={newSkill.category}
+              onChange={(e) => setNewSkill((p) => ({ ...p, category: e.target.value }))}
+              className={INPUT_CLS}
+            >
+              <option value="techniques">Savoir-faire techniques</option>
+              <option value="soft">Savoir-être</option>
+              <option value="languages">Langues</option>
+              <option value="digital">Numérique</option>
+            </select>
+          </div>
+          <div>
+            <label className={LABEL_CLS}>Nom de la compétence <span className="text-red-500">*</span></label>
+            <input
+              type="text"
+              value={newSkill.name}
+              onChange={(e) => setNewSkill((p) => ({ ...p, name: e.target.value }))}
+              placeholder="Ex: Menuiserie bois"
+              className={INPUT_CLS}
+            />
+          </div>
+          <div>
+            <label className={LABEL_CLS}>Niveau (%)</label>
+            <input
+              type="number"
+              min="0"
+              max="100"
+              value={newSkill.progress}
+              onChange={(e) => setNewSkill((p) => ({ ...p, progress: Number(e.target.value) }))}
+              className={INPUT_CLS}
+            />
+          </div>
+          <div className="flex items-center gap-3 pt-2">
+            <button
+              type="button"
+              onClick={() => setShowSkillModal(false)}
+              className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
+            >
+              Annuler
+            </button>
+            <button
+              type="button"
+              onClick={handleAddSkill}
+              disabled={!newSkill.name.trim() || skillSaving}
+              className="flex-1 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+            >
+              {skillSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+              Enregistrer
+            </button>
+          </div>
+        </ModalShell>
+      )}
     </div>
   );
 }
