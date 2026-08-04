@@ -79,12 +79,17 @@ function formatDateShort(dateVal) {
 // Sub-components
 // ────────────────────────────────────────────────────────────
 function DocStatusBadge({ status }) {
-  const cfg = {
-    valide:       { label: 'Valide',        cls: 'bg-emerald-100 text-emerald-700' },
-    a_renouveler: { label: 'À renouveler',  cls: 'bg-orange-100  text-orange-700'  },
-    manquant:     { label: 'Manquant',      cls: 'bg-red-100     text-red-700'     },
-  };
-  const { label, cls } = cfg[status] || cfg.valide;
+  // Map real DB status values (capital first letter) to display config
+  const s = String(status || '').toLowerCase();
+  let label = status || 'Valide';
+  let cls = 'bg-emerald-100 text-emerald-700';
+  if (s.includes('renouveler') || s.includes('renouveler')) {
+    label = 'À renouveler'; cls = 'bg-orange-100 text-orange-700';
+  } else if (s.includes('expir')) {
+    label = 'Expiré'; cls = 'bg-red-100 text-red-700';
+  } else if (s === 'valide') {
+    label = 'Valide'; cls = 'bg-emerald-100 text-emerald-700';
+  }
   return (
     <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${cls}`}>
       {label}
@@ -186,7 +191,9 @@ function CompanionProfile() {
 
   // ── Modal state for each tab ──────────────────────────────
   const [showDocModal, setShowDocModal] = useState(false);
-  const [newDoc, setNewDoc] = useState({ title: '', status: 'valide', expiry_date: '', icon: '📄' });
+  // Real schema: file_name, file_type ('Identité'|'Médical'|'Administratif'|'Formation'|'Autre'),
+  //              status ('Valide'|'À renouveler'|'Expiré'), expiry_date → expiration_date
+  const [newDoc, setNewDoc] = useState({ title: '', file_type: 'Administratif', status: 'Valide', expiry_date: '' });
   const [docFile, setDocFile] = useState(null);
   const [docSaving, setDocSaving] = useState(false);
 
@@ -259,11 +266,13 @@ function CompanionProfile() {
   const handleAddDocument = async () => {
     if (!newDoc.title.trim()) return;
     setDocSaving(true);
+    // addDocument maps payload.title → file_name, payload.file_type → file_type,
+    // payload.status → status, payload.expiry_date → expiration_date
     const { data, error: saveErr } = await addDocument(id, newDoc, docFile);
     setDocSaving(false);
     if (!saveErr && data) {
       setDocuments((prev) => [data, ...prev]);
-      setNewDoc({ title: '', status: 'valide', expiry_date: '', icon: '📄' });
+      setNewDoc({ title: '', file_type: 'Administratif', status: 'Valide', expiry_date: '' });
       setDocFile(null);
       setShowDocModal(false);
     }
@@ -739,19 +748,33 @@ function CompanionProfile() {
                 {documents.map((doc) => (
                   <div key={doc.id} className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 relative flex flex-col gap-3">
                     <div className="absolute top-4 right-4">
+                      {/* status is 'Valide' | 'À renouveler' | 'Expiré' in real schema */}
                       <DocStatusBadge status={doc.status} />
                     </div>
                     <div className="flex items-start gap-3 pr-20">
-                      <span className="text-2xl">{doc.icon || '📄'}</span>
+                      {/* Icon derived from file_type, no 'icon' column in real schema */}
+                      <span className="text-2xl">
+                        {doc.file_type === 'Médical' ? '🏥'
+                          : doc.file_type === 'Identité' ? '🪪'
+                          : doc.file_type === 'Formation' ? '📚'
+                          : '📄'}
+                      </span>
                       <div>
-                        <p className="text-sm font-bold text-gray-900">{doc.title}</p>
+                        {/* Real schema column is file_name, not title */}
+                        <p className="text-sm font-bold text-gray-900">{doc.file_name}</p>
                         <p className="text-xs text-gray-400 mt-0.5">
-                          {doc.expiry_date ? `Expire le ${formatDateShort(doc.expiry_date)}` : 'Pas de date d\'expiration'}
+                          {/* Real schema column is expiration_date, not expiry_date */}
+                          {doc.expiration_date
+                            ? `Expire le ${formatDateShort(doc.expiration_date)}`
+                            : 'Pas de date d\'expiration'}
                         </p>
+                        {doc.file_type && (
+                          <span className="text-[10px] text-gray-400 font-medium">{doc.file_type}</span>
+                        )}
                       </div>
                     </div>
                     <div className="flex items-center gap-2 pt-1 border-t border-gray-100">
-                      {doc.file_url && (
+                      {doc.file_url && doc.file_url !== '#' && (
                         <a
                           href={doc.file_url}
                           target="_blank"
@@ -765,7 +788,7 @@ function CompanionProfile() {
                         <button
                           type="button"
                           onClick={async () => {
-                            await deleteDocument(doc.id);
+                            await deleteDocument(doc.id, doc.file_url);
                             setDocuments((prev) => prev.filter((d) => d.id !== doc.id));
                           }}
                           className="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-400 hover:text-red-600 transition-colors ml-auto"
@@ -858,45 +881,53 @@ function CompanionProfile() {
                 action={canAdd ? 'Cliquez sur « Ajouter une formation » pour commencer.' : undefined}
               />
             ) : (
-              formations.map((f) => (
-                <div key={f.id} className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 space-y-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-bold text-gray-900">{f.title}</p>
-                      {f.location && <p className="text-xs text-gray-400 mt-0.5">{f.location}</p>}
+              formations.map((f) => {
+                // Real schema: progress_percentage (from compagnon_formations junction),
+                //              title (from joined formations table)
+                const pct = f.progress_percentage ?? 0;
+                return (
+                  <div key={f.id} className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-bold text-gray-900">{f.title}</p>
+                        {f.duration_hours > 0 && (
+                          <p className="text-xs text-gray-400 mt-0.5">{f.duration_hours}h de formation</p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {/* status is normalised by fetchFormations/addFormation in service */}
+                        <FormationBadge status={f.status} />
+                        {canEdit && (
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              await deleteFormation(f.id);
+                              setFormations((prev) => prev.filter((x) => x.id !== f.id));
+                            }}
+                            className="p-1 rounded text-gray-300 hover:text-red-500 transition-colors"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <FormationBadge status={f.status} />
-                      {canEdit && (
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            await deleteFormation(f.id);
-                            setFormations((prev) => prev.filter((x) => x.id !== f.id));
-                          }}
-                          className="p-1 rounded text-gray-300 hover:text-red-500 transition-colors"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      )}
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-xs text-gray-500 font-medium">Avancement</span>
+                        <span className="text-xs font-bold text-gray-700">{pct}%</span>
+                      </div>
+                      <div className="w-full h-1.5 rounded-full bg-gray-100 overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all duration-500 ${
+                            f.status === 'obtenu' ? 'bg-emerald-500' : f.status === 'en_cours' ? 'bg-blue-500' : 'bg-gray-300'
+                          }`}
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
                     </div>
                   </div>
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <span className="text-xs text-gray-500 font-medium">Avancement</span>
-                      <span className="text-xs font-bold text-gray-700">{f.progress}%</span>
-                    </div>
-                    <div className="w-full h-1.5 rounded-full bg-gray-100 overflow-hidden">
-                      <div
-                        className={`h-full rounded-full transition-all duration-500 ${
-                          f.status === 'obtenu' ? 'bg-emerald-500' : f.status === 'en_cours' ? 'bg-blue-500' : 'bg-gray-300'
-                        }`}
-                        style={{ width: `${f.progress}%` }}
-                      />
-                    </div>
-                  </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         )}
@@ -906,64 +937,22 @@ function CompanionProfile() {
           <div>
             <div className="flex items-center justify-between mb-5">
               <h3 className="text-base font-bold text-gray-900">Compétences</h3>
-              {canAdd && (
-                <button
-                  type="button"
-                  onClick={() => setShowSkillModal(true)}
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-colors"
-                >
-                  <Plus className="w-4 h-4" />
-                  Ajouter une compétence
-                </button>
-              )}
             </div>
-
-            {skillsLoading ? (
-              <div className="flex items-center justify-center py-16">
-                <Loader2 className="w-7 h-7 text-blue-500 animate-spin" />
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {SKILL_CATEGORIES.map(({ key, label, icon: Icon, color }) => (
-                  <div key={key} className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-                    <div className="flex items-center gap-2.5 pb-4 mb-4 border-b border-gray-100">
-                      <Icon className={`w-5 h-5 ${color}`} />
-                      <h3 className="text-sm font-bold text-gray-900">{label}</h3>
-                    </div>
-                    <div className="space-y-4">
-                      {(skills[key] || []).length === 0 ? (
-                        <p className="text-xs text-gray-300 text-center py-4">
-                          Aucune compétence. {canAdd ? 'Cliquez sur Ajouter.' : ''}
-                        </p>
-                      ) : (
-                        (skills[key] || []).map((s) => (
-                          <div key={s.id} className="flex items-center gap-2 group">
-                            <div className="flex-1">
-                              <SkillBar name={s.name} pct={s.progress} />
-                            </div>
-                            {canEdit && (
-                              <button
-                                type="button"
-                                onClick={async () => {
-                                  await deleteSkill(s.id);
-                                  setSkills((prev) => ({
-                                    ...prev,
-                                    [key]: prev[key].filter((x) => x.id !== s.id),
-                                  }));
-                                }}
-                                className="opacity-0 group-hover:opacity-100 p-1 rounded text-gray-300 hover:text-red-500 transition-all"
-                              >
-                                <Trash2 className="w-3 h-3" />
-                              </button>
-                            )}
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+            {/* The 'skills' table does not exist in the current database schema.
+                This section will be activated once the skills module is created.
+                Formation progress data from compagnon_formations is visible in the
+                Formations tab above. */}
+            <div className="bg-white rounded-xl border border-dashed border-gray-200 p-12 text-center">
+              <Award className="w-12 h-12 text-gray-200 mx-auto mb-4" />
+              <h4 className="text-sm font-semibold text-gray-500 mb-1">Module Compétences</h4>
+              <p className="text-xs text-gray-400 max-w-sm mx-auto">
+                Ce module sera disponible prochainement. Les compétences seront liées
+                aux formations complétées et aux évaluations effectuées par le référent.
+              </p>
+              <p className="text-xs text-blue-400 mt-3 font-medium">
+                Consultez l'onglet <strong>Formations</strong> pour voir la progression actuelle.
+              </p>
+            </div>
           </div>
         )}
       </div>
@@ -1016,7 +1005,7 @@ function CompanionProfile() {
       {showDocModal && (
         <ModalShell title="Ajouter un document" onClose={() => setShowDocModal(false)}>
           <div>
-            <label className={LABEL_CLS}>Titre <span className="text-red-500">*</span></label>
+            <label className={LABEL_CLS}>Nom du document <span className="text-red-500">*</span></label>
             <input
               type="text"
               value={newDoc.title}
@@ -1027,34 +1016,40 @@ function CompanionProfile() {
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
+              {/* file_type matches real schema: 'Identité'|'Médical'|'Administratif'|'Formation'|'Autre' */}
+              <label className={LABEL_CLS}>Catégorie</label>
+              <select
+                value={newDoc.file_type}
+                onChange={(e) => setNewDoc((p) => ({ ...p, file_type: e.target.value }))}
+                className={INPUT_CLS}
+              >
+                <option value="Identité">Identité</option>
+                <option value="Médical">Médical</option>
+                <option value="Administratif">Administratif</option>
+                <option value="Formation">Formation</option>
+                <option value="Autre">Autre</option>
+              </select>
+            </div>
+            <div>
+              {/* status matches real schema: 'Valide'|'À renouveler'|'Expiré' */}
               <label className={LABEL_CLS}>Statut</label>
               <select
                 value={newDoc.status}
                 onChange={(e) => setNewDoc((p) => ({ ...p, status: e.target.value }))}
                 className={INPUT_CLS}
               >
-                <option value="valide">Valide</option>
-                <option value="a_renouveler">À renouveler</option>
-                <option value="manquant">Manquant</option>
+                <option value="Valide">Valide</option>
+                <option value="À renouveler">À renouveler</option>
+                <option value="Expiré">Expiré</option>
               </select>
-            </div>
-            <div>
-              <label className={LABEL_CLS}>Date d'expiration</label>
-              <input
-                type="date"
-                value={newDoc.expiry_date}
-                onChange={(e) => setNewDoc((p) => ({ ...p, expiry_date: e.target.value }))}
-                className={INPUT_CLS}
-              />
             </div>
           </div>
           <div>
-            <label className={LABEL_CLS}>Icône (emoji)</label>
+            <label className={LABEL_CLS}>Date d'expiration</label>
             <input
-              type="text"
-              value={newDoc.icon}
-              onChange={(e) => setNewDoc((p) => ({ ...p, icon: e.target.value }))}
-              placeholder="📄"
+              type="date"
+              value={newDoc.expiry_date}
+              onChange={(e) => setNewDoc((p) => ({ ...p, expiry_date: e.target.value }))}
               className={INPUT_CLS}
             />
           </div>
@@ -1096,8 +1091,11 @@ function CompanionProfile() {
       {/* ─── Add Formation Modal ─── */}
       {showFormationModal && (
         <ModalShell title="Ajouter une formation" onClose={() => setShowFormationModal(false)}>
+          <p className="text-xs text-gray-400 -mt-1">
+            La formation sera ajoutée au catalogue si elle n'existe pas encore, puis liée à ce compagnon.
+          </p>
           <div>
-            <label className={LABEL_CLS}>Titre <span className="text-red-500">*</span></label>
+            <label className={LABEL_CLS}>Titre de la formation <span className="text-red-500">*</span></label>
             <input
               type="text"
               value={newFormation.title}
@@ -1106,30 +1104,22 @@ function CompanionProfile() {
               className={INPUT_CLS}
             />
           </div>
-          <div>
-            <label className={LABEL_CLS}>Lieu / Date</label>
-            <input
-              type="text"
-              value={newFormation.location}
-              onChange={(e) => setNewFormation((p) => ({ ...p, location: e.target.value }))}
-              placeholder="Ex: Tarnos — 15 janv. 2024"
-              className={INPUT_CLS}
-            />
-          </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
+              {/* status mapped → 'À commencer'|'En cours'|'Terminé' in real DB */}
               <label className={LABEL_CLS}>Statut</label>
               <select
                 value={newFormation.status}
                 onChange={(e) => setNewFormation((p) => ({ ...p, status: e.target.value }))}
                 className={INPUT_CLS}
               >
-                <option value="planifié">Planifié</option>
+                <option value="planifié">À commencer</option>
                 <option value="en_cours">En cours</option>
-                <option value="obtenu">Obtenu</option>
+                <option value="obtenu">Terminé</option>
               </select>
             </div>
             <div>
+              {/* stored as progress_percentage in compagnon_formations */}
               <label className={LABEL_CLS}>Avancement (%)</label>
               <input
                 type="number"

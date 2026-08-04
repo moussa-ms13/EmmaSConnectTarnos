@@ -387,12 +387,16 @@ export async function deleteTask(taskId) {
 
 // ─────────────────────────────────────────────────────────────
 // Documents (Profile Tab)
+// Real schema: public.documents
+//   compagnon_id, file_name, file_url, file_type, file_size,
+//   expiration_date, status ('Valide'|'À renouveler'|'Expiré')
 // ─────────────────────────────────────────────────────────────
 
 /**
  * Fetch all documents for a companion.
+ * Delegates to the existing documentService logic but scoped to one companion.
  * @param {string} companionId
- * @returns {{ data, error }}
+ * @returns {{ data: array, error }}
  */
 export async function fetchDocuments(companionId) {
   if (!companionId) return { data: [], error: null };
@@ -405,29 +409,41 @@ export async function fetchDocuments(companionId) {
 }
 
 /**
- * Add a document for a companion. Optionally uploads a file to Storage.
+ * Add a document record for a companion, with optional file upload to the
+ * existing 'documents' storage bucket.
+ *
+ * Maps UI fields → real schema columns:
+ *   payload.title       → file_name  (the documents table has no 'title' column)
+ *   payload.file_type   → file_type  ('Identité'|'Médical'|'Administratif'|'Formation'|'Autre')
+ *   payload.status      → status     ('Valide'|'À renouveler'|'Expiré')
+ *   payload.expiry_date → expiration_date
+ *
  * @param {string} companionId
- * @param {{ title: string, status: string, expiry_date?: string, icon?: string }} payload
+ * @param {{ title: string, file_type?: string, status?: string, expiry_date?: string }} payload
  * @param {File|null} file
  * @returns {{ data, error }}
  */
 export async function addDocument(companionId, payload, file = null) {
-  const { data: { user }, error: authErr } = await supabase.auth.getUser();
-  if (authErr || !user) return { data: null, error: authErr || new Error('Non authentifié.') };
-
-  let file_url = null;
-  let file_name = null;
+  let file_url = '#';
+  let file_name = payload.title || 'Document';
+  let file_size = 0;
 
   if (file) {
     const fileExt = file.name.split('.').pop();
-    const filePath = `compagnons/${companionId}/${Date.now()}_${Math.random().toString(36).slice(2)}.${fileExt}`;
+    const safeName = `${Date.now()}_${Math.random().toString(36).slice(2)}.${fileExt}`;
+    const filePath = `compagnons/${safeName}`;
+
     const { error: uploadErr } = await supabase.storage
       .from('documents')
       .upload(filePath, file, { cacheControl: '3600', upsert: false });
+
     if (!uploadErr) {
       const { data: urlData } = supabase.storage.from('documents').getPublicUrl(filePath);
-      file_url = urlData?.publicUrl || null;
+      file_url = urlData?.publicUrl || '#';
       file_name = file.name;
+      file_size = file.size || 0;
+    } else {
+      console.warn('Storage upload error (non-fatal):', uploadErr.message);
     }
   }
 
@@ -435,37 +451,57 @@ export async function addDocument(companionId, payload, file = null) {
     .from('documents')
     .insert([{
       compagnon_id: companionId,
-      title: payload.title,
-      status: payload.status || 'valide',
-      expiry_date: payload.expiry_date || null,
-      icon: payload.icon || '📄',
-      file_url,
       file_name,
-      created_by: user.id,
+      file_url,
+      file_type:        payload.file_type       || 'Administratif',
+      file_size,
+      expiration_date:  payload.expiry_date      || null,
+      status:           payload.status           || 'Valide',
     }])
     .select()
     .single();
+
   return { data, error };
 }
 
 /**
- * Delete a document by ID.
+ * Delete a document record (and its storage file) by ID.
+ * Delegates to the full logic in documentService, replicated here to avoid
+ * a circular import.
  * @param {string} documentId
+ * @param {string} [fileUrl]
  * @returns {{ error }}
  */
-export async function deleteDocument(documentId) {
+export async function deleteDocument(documentId, fileUrl) {
+  // Try to delete from storage first (best-effort)
+  const targetUrl = fileUrl || (await supabase
+    .from('documents').select('file_url').eq('id', documentId).maybeSingle()
+  ).data?.file_url;
+
+  if (targetUrl && targetUrl !== '#') {
+    const marker = '/documents/';
+    const idx = targetUrl.indexOf(marker);
+    if (idx !== -1) {
+      const filePath = decodeURIComponent(targetUrl.substring(idx + marker.length));
+      await supabase.storage.from('documents').remove([filePath]);
+    }
+  }
+
   const { error } = await supabase.from('documents').delete().eq('id', documentId);
   return { error };
 }
 
 // ─────────────────────────────────────────────────────────────
-// Appointments (Profile Tab — fetches from existing appointments table)
+// Appointments (Profile Tab)
+// Real schema: public.appointments
+//   compagnon_id, appointment_date, doctor_name, specialty,
+//   location, is_urgent, status
 // ─────────────────────────────────────────────────────────────
 
 /**
- * Fetch all appointments linked to a specific companion.
+ * Fetch all appointments for a specific companion, newest first.
  * @param {string} companionId
- * @returns {{ data, error }}
+ * @returns {{ data: array, error }}
  */
 export async function fetchCompanionAppointments(companionId) {
   if (!companionId) return { data: [], error: null };
@@ -479,117 +515,161 @@ export async function fetchCompanionAppointments(companionId) {
 
 // ─────────────────────────────────────────────────────────────
 // Formations (Profile Tab)
+// Real schema: many-to-many via public.compagnon_formations
+//   compagnon_id, formation_id, progress_percentage, status,
+//   completed_at
+// The formation catalogue lives in public.formations (title, duration_hours)
 // ─────────────────────────────────────────────────────────────
 
 /**
- * Fetch all formations for a companion.
+ * Fetch a companion's formation assignments with joined formation details.
+ * Returns a flat list: { id (assignment id), formation_id, title, progress_percentage, status, completed_at }
  * @param {string} companionId
- * @returns {{ data, error }}
+ * @returns {{ data: array, error }}
  */
 export async function fetchFormations(companionId) {
   if (!companionId) return { data: [], error: null };
   const { data, error } = await supabase
-    .from('formations')
-    .select('*')
+    .from('compagnon_formations')
+    .select('*, formations(id, title, duration_hours)')
     .eq('compagnon_id', companionId)
     .order('created_at', { ascending: false });
-  return { data: data || [], error };
+
+  if (error) return { data: [], error };
+
+  // Flatten so the UI can read .title, .progress, .status directly
+  const flat = (data || []).map((row) => ({
+    id:                   row.id,
+    formation_id:         row.formation_id,
+    compagnon_id:         row.compagnon_id,
+    title:                row.formations?.title || 'Formation sans titre',
+    duration_hours:       row.formations?.duration_hours || 0,
+    progress_percentage:  row.progress_percentage || 0,
+    // Normalise status to match the UI badge keys
+    status:               normaliseFormationStatus(row.status),
+    completed_at:         row.completed_at,
+    created_at:           row.created_at,
+  }));
+
+  return { data: flat, error: null };
+}
+
+/** Map DB status values to the UI badge keys used in FormationBadge */
+function normaliseFormationStatus(raw) {
+  const s = (raw || '').toLowerCase();
+  if (s.includes('termin') || s.includes('obtenu') || s.includes('complet')) return 'obtenu';
+  if (s.includes('cours') || s.includes('progress') || s.includes('encours')) return 'en_cours';
+  return 'planifié';
 }
 
 /**
- * Add a formation for a companion.
+ * Add a formation to a companion's profile.
+ * Strategy:
+ *   1. Upsert into public.formations to get/create the catalogue entry.
+ *   2. Insert a row in public.compagnon_formations linking companion ↔ formation.
+ *
  * @param {string} companionId
- * @param {{ title: string, location?: string, status: string, progress: number }} payload
- * @returns {{ data, error }}
+ * @param {{ title: string, status?: string, progress?: number }} payload
+ * @returns {{ data, error }}  — returns the flattened assignment row
  */
 export async function addFormation(companionId, payload) {
-  const { data: { user }, error: authErr } = await supabase.auth.getUser();
-  if (authErr || !user) return { data: null, error: authErr || new Error('Non authentifié.') };
-
-  const { data, error } = await supabase
+  // Step 1: Ensure the formation title exists in the catalogue
+  let formationId;
+  const { data: existing } = await supabase
     .from('formations')
+    .select('id')
+    .ilike('title', payload.title.trim())
+    .maybeSingle();
+
+  if (existing?.id) {
+    formationId = existing.id;
+  } else {
+    const { data: newFormation, error: createErr } = await supabase
+      .from('formations')
+      .insert([{ title: payload.title.trim(), duration_hours: 0, participants_count: 0 }])
+      .select('id')
+      .single();
+    if (createErr) return { data: null, error: createErr };
+    formationId = newFormation.id;
+  }
+
+  // Map UI progress % and status to DB columns
+  const dbStatus = payload.status === 'obtenu'
+    ? 'Terminé'
+    : payload.status === 'en_cours'
+    ? 'En cours'
+    : 'À commencer';
+
+  const progress = Number(payload.progress) || 0;
+  const completedAt = dbStatus === 'Terminé' ? (payload.completed_at || new Date().toISOString().split('T')[0]) : null;
+
+  // Step 2: Insert the junction row
+  const { data, error } = await supabase
+    .from('compagnon_formations')
     .insert([{
-      compagnon_id: companionId,
-      title: payload.title,
-      location: payload.location || null,
-      status: payload.status || 'planifié',
-      progress: Number(payload.progress) || 0,
-      start_date: payload.start_date || null,
-      end_date: payload.end_date || null,
-      created_by: user.id,
+      compagnon_id:         companionId,
+      formation_id:         formationId,
+      progress_percentage:  progress,
+      status:               dbStatus,
+      completed_at:         completedAt,
     }])
-    .select()
+    .select('*, formations(id, title, duration_hours)')
     .single();
-  return { data, error };
+
+  if (error) return { data: null, error };
+
+  // Return the flattened shape the UI expects
+  return {
+    data: {
+      id:                  data.id,
+      formation_id:        data.formation_id,
+      compagnon_id:        data.compagnon_id,
+      title:               data.formations?.title || payload.title,
+      duration_hours:      data.formations?.duration_hours || 0,
+      progress_percentage: data.progress_percentage,
+      status:              normaliseFormationStatus(data.status),
+      completed_at:        data.completed_at,
+      created_at:          data.created_at,
+    },
+    error: null,
+  };
 }
 
 /**
- * Delete a formation by ID.
- * @param {string} formationId
+ * Delete a formation assignment from compagnon_formations by assignment ID.
+ * Does NOT delete the formation from the catalogue.
+ * @param {string} assignmentId
  * @returns {{ error }}
  */
-export async function deleteFormation(formationId) {
-  const { error } = await supabase.from('formations').delete().eq('id', formationId);
+export async function deleteFormation(assignmentId) {
+  const { error } = await supabase
+    .from('compagnon_formations')
+    .delete()
+    .eq('id', assignmentId);
   return { error };
 }
 
 // ─────────────────────────────────────────────────────────────
-// Skills (Profile Tab)
+// Skills — NOTE: No 'skills' table exists in this database.
+// The Compétences tab is mapped from compagnon_formations data
+// grouped by formation category, or left as an empty section
+// with an explanatory empty state. These stubs return empty data
+// gracefully so no runtime errors occur.
 // ─────────────────────────────────────────────────────────────
 
-/**
- * Fetch all skills for a companion, grouped by category.
- * Returns { techniques: [], soft: [], languages: [], digital: [] }
- * @param {string} companionId
- * @returns {{ data: object, error }}
- */
-export async function fetchSkills(companionId) {
-  if (!companionId) return { data: { techniques: [], soft: [], languages: [], digital: [] }, error: null };
-  const { data, error } = await supabase
-    .from('skills')
-    .select('*')
-    .eq('compagnon_id', companionId)
-    .order('created_at', { ascending: true });
-
-  if (error) return { data: { techniques: [], soft: [], languages: [], digital: [] }, error };
-
-  const grouped = { techniques: [], soft: [], languages: [], digital: [] };
-  (data || []).forEach((s) => {
-    if (grouped[s.category]) grouped[s.category].push(s);
-  });
-  return { data: grouped, error: null };
+/** No-op: skills table does not exist. Returns empty grouped object. */
+export async function fetchSkills(_companionId) {
+  return { data: { techniques: [], soft: [], languages: [], digital: [] }, error: null };
 }
 
-/**
- * Add a skill for a companion.
- * @param {string} companionId
- * @param {{ category: string, name: string, progress: number }} payload
- * @returns {{ data, error }}
- */
-export async function addSkill(companionId, payload) {
-  const { data: { user }, error: authErr } = await supabase.auth.getUser();
-  if (authErr || !user) return { data: null, error: authErr || new Error('Non authentifié.') };
-
-  const { data, error } = await supabase
-    .from('skills')
-    .insert([{
-      compagnon_id: companionId,
-      category: payload.category,
-      name: payload.name,
-      progress: Number(payload.progress) || 0,
-      created_by: user.id,
-    }])
-    .select()
-    .single();
-  return { data, error };
+/** No-op: skills table does not exist. Returns null data gracefully. */
+export async function addSkill(_companionId, _payload) {
+  return { data: null, error: new Error('Le module Compétences sera disponible prochainement.') };
 }
 
-/**
- * Delete a skill by ID.
- * @param {string} skillId
- * @returns {{ error }}
- */
-export async function deleteSkill(skillId) {
-  const { error } = await supabase.from('skills').delete().eq('id', skillId);
-  return { error };
+/** No-op: skills table does not exist. */
+export async function deleteSkill(_skillId) {
+  return { error: null };
 }
+
+
