@@ -21,7 +21,6 @@ const ROLE_LABELS = {
 const GENDER_OPTIONS = [
   { value: 'Homme', label: 'Homme' },
   { value: 'Femme', label: 'Femme' },
-  { value: 'Autre', label: 'Autre' },
 ];
 
 /**
