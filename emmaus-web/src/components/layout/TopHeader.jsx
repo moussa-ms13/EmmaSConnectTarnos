@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthProvider';
 import { getUnreadMessages, markMessageAsRead } from '../../services/messageService';
+import { getNotificationCount } from '../../services/notificationService';
 import { signOut } from '../../services/authService';
 import SendMessageModal from './SendMessageModal';
 
@@ -15,10 +16,11 @@ import SendMessageModal from './SendMessageModal';
  * Right: Notification bell with red dot badge and User avatar initials pill with interactive dropdown.
  */
 function TopHeader({ onMenuClick = () => {} }) {
-  const { user, profile } = useAuth();
+  const { user, profile, isAdmin } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [messages, setMessages] = useState([]);
+  const [notifCount, setNotifCount] = useState(0);
   const [showDropdown, setShowDropdown] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showModal, setShowModal] = useState(false);
@@ -136,6 +138,9 @@ function TopHeader({ onMenuClick = () => {} }) {
     if (data) {
       setMessages(data);
     }
+    // Also load pending DB notification count
+    const count = await getNotificationCount(isAdmin, user?.id);
+    setNotifCount(count);
   }
 
   const handleMarkAsRead = async (id, e) => {
@@ -144,7 +149,7 @@ function TopHeader({ onMenuClick = () => {} }) {
     setMessages((prev) => prev.filter((m) => m.id !== id));
   };
 
-  const badgeCount = messages.length > 0 ? messages.length : 2;
+  const badgeCount = messages.length + notifCount || 0;
 
   const handleLogout = async () => {
     setShowProfileMenu(false);
@@ -185,9 +190,11 @@ function TopHeader({ onMenuClick = () => {} }) {
             aria-label="Notifications et messages"
           >
             <Bell className="w-5 h-5" />
-            <span className="absolute top-1 right-1 px-1.5 py-0.5 min-w-[18px] h-[18px] bg-red-500 text-white rounded-full text-[10px] font-bold flex items-center justify-center shadow-sm">
-              {badgeCount}
-            </span>
+            {badgeCount > 0 && (
+              <span className="absolute top-1 right-1 px-1.5 py-0.5 min-w-[18px] h-[18px] bg-red-500 text-white rounded-full text-[10px] font-bold flex items-center justify-center shadow-sm">
+                {badgeCount}
+              </span>
+            )}
           </button>
 
           {/* Notifications Dropdown Panel */}
@@ -199,7 +206,7 @@ function TopHeader({ onMenuClick = () => {} }) {
                     Notifications
                   </h4>
                   <p className="text-xs text-gray-500 dark:text-slate-400">
-                    {messages.length || 2} nouvelle(s)
+                    {badgeCount > 0 ? `${badgeCount} nouvelle(s)` : 'Aucune nouvelle'}
                   </p>
                 </div>
 

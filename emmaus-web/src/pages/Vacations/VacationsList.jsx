@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Palmtree, Plus, Loader2, AlertTriangle, Calendar,
-  Check, X, Clock, CheckCircle2, XCircle,
+  Check, X, Clock, CheckCircle2, XCircle, TrendingDown, Send,
 } from 'lucide-react';
 import { useAuth } from '../../components/auth/AuthProvider';
 import {
@@ -11,51 +11,32 @@ import {
   updateVacationStatus,
 } from '../../services/vacationService';
 
+/** Total annual vacation quota in calendar days */
+const VACATION_QUOTA = 35;
+
 /**
  * Status badge configuration — colors and labels.
  */
 const STATUS_CONFIG = {
-  'En attente': {
-    label: 'En attente',
-    style: 'bg-amber-100 text-amber-700',
-    icon: Clock,
-  },
-  'Approuvé': {
-    label: 'Approuvé',
-    style: 'bg-emerald-100 text-emerald-700',
-    icon: CheckCircle2,
-  },
-  'Refusé': {
-    label: 'Refusé',
-    style: 'bg-red-100 text-red-700',
-    icon: XCircle,
-  },
+  'En attente': { label: 'En attente', style: 'bg-amber-100 text-amber-700', icon: Clock },
+  'Approuvé':   { label: 'Approuvé',   style: 'bg-emerald-100 text-emerald-700', icon: CheckCircle2 },
+  'Refusé':     { label: 'Refusé',     style: 'bg-red-100 text-red-700', icon: XCircle },
 };
 
-/**
- * Format date for French display.
- */
+/** Format date for French display. */
 function formatDate(dateStr) {
   if (!dateStr) return '—';
-  return new Date(dateStr).toLocaleDateString('fr-FR', {
-    day: '2-digit',
-    month: 'long',
-    year: 'numeric',
-  });
+  return new Date(dateStr).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
 }
 
-/**
- * Compute duration in days between two dates.
- */
+/** Compute duration in calendar days between two dates (inclusive). */
 function computeDays(start, end) {
   if (!start || !end) return 0;
   const ms = new Date(end) - new Date(start);
   return Math.max(1, Math.ceil(ms / (1000 * 60 * 60 * 24)) + 1);
 }
 
-/**
- * StatusBadge — Renders a colored status badge with icon.
- */
+/** StatusBadge — Renders a colored status badge with icon. */
 function StatusBadge({ status }) {
   const config = STATUS_CONFIG[status] || STATUS_CONFIG['En attente'];
   const Icon = config.icon;
@@ -68,12 +49,68 @@ function StatusBadge({ status }) {
 }
 
 /**
+ * VacationBalanceCard — Displays the quota / consumed / remaining counter.
+ */
+function VacationBalanceCard({ consumed, quota = VACATION_QUOTA }) {
+  const remaining = Math.max(0, quota - consumed);
+  const usedPct = Math.min(100, Math.round((consumed / quota) * 100));
+  const barColor = remaining <= 5 ? 'bg-red-500' : remaining <= 10 ? 'bg-amber-500' : 'bg-emerald-500';
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
+      <div className="flex items-center gap-3 mb-4">
+        <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center shrink-0">
+          <TrendingDown className="w-5 h-5 text-blue-600" />
+        </div>
+        <div>
+          <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Solde de congés</p>
+          <p className="text-xs text-gray-400">Exercice en cours</p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-3 gap-3 mb-4 text-center">
+        <div className="bg-gray-50 rounded-xl p-3">
+          <p className="text-2xl font-extrabold text-gray-900">{quota}</p>
+          <p className="text-[11px] text-gray-400 font-semibold uppercase tracking-wide mt-0.5">Quota</p>
+        </div>
+        <div className="bg-amber-50 rounded-xl p-3">
+          <p className="text-2xl font-extrabold text-amber-700">{consumed}</p>
+          <p className="text-[11px] text-amber-600 font-semibold uppercase tracking-wide mt-0.5">Utilisés</p>
+        </div>
+        <div className={`rounded-xl p-3 ${remaining <= 5 ? 'bg-red-50' : 'bg-emerald-50'}`}>
+          <p className={`text-2xl font-extrabold ${remaining <= 5 ? 'text-red-700' : 'text-emerald-700'}`}>
+            {remaining}
+          </p>
+          <p className={`text-[11px] font-semibold uppercase tracking-wide mt-0.5 ${remaining <= 5 ? 'text-red-500' : 'text-emerald-600'}`}>
+            Restants
+          </p>
+        </div>
+      </div>
+
+      {/* Progress bar */}
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between text-xs text-gray-500">
+          <span>Jours consommés</span>
+          <span className="font-bold">{usedPct}%</span>
+        </div>
+        <div className="h-2.5 rounded-full bg-gray-100 overflow-hidden">
+          <div
+            className={`h-full rounded-full transition-all duration-700 ${barColor}`}
+            style={{ width: `${usedPct}%` }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
  * VacationsList — Role-based Congés page.
- * Admin sees all requests with approve/reject actions.
- * User sees their own requests and a creation form.
+ * Admin sees all requests with approve/reject actions + per-requester balance.
+ * User/Viewer sees their own requests, creation form, and personal balance card.
  */
 function VacationsList() {
-  const { user, profile, canAdd, canEdit, canDelete } = useAuth();
+  const { user, profile, canAdd, canEdit } = useAuth();
   const roleName = profile?.roles?.name || 'user';
   const isAdmin = roleName === 'admin';
 
@@ -83,20 +120,14 @@ function VacationsList() {
 
   // Form state (user view)
   const [showForm, setShowForm] = useState(false);
-  const [formData, setFormData] = useState({
-    start_date: '',
-    end_date: '',
-    reason: '',
-  });
+  const [formData, setFormData] = useState({ start_date: '', end_date: '', reason: '' });
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState(null);
 
   // Action loading state (admin view)
   const [actionLoadingId, setActionLoadingId] = useState(null);
 
-  /**
-   * Load vacations based on role.
-   */
+  /** Load vacations based on role. */
   const loadVacations = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -116,21 +147,17 @@ function VacationsList() {
     loadVacations();
   }, [loadVacations]);
 
-  /**
-   * Handle form submission — create vacation request.
-   */
+  /** Handle form submission — create vacation request. */
   const handleSubmit = async (e) => {
     e.preventDefault();
     setFormError(null);
     setSaving(true);
-
     try {
       const { error: createErr } = await createVacationRequest(formData);
       if (createErr) throw new Error(createErr.message);
-
-      // Reset form and refresh
       setFormData({ start_date: '', end_date: '', reason: '' });
       setShowForm(false);
+      // Always re-fetch — never inject partial data into state
       await loadVacations();
     } catch (err) {
       setFormError(err.message || 'Une erreur est survenue.');
@@ -139,9 +166,7 @@ function VacationsList() {
     }
   };
 
-  /**
-   * Admin action — approve or reject a request.
-   */
+  /** Admin action — approve or reject a request. */
   const handleStatusChange = async (id, newStatus) => {
     setActionLoadingId(id);
     try {
@@ -155,19 +180,32 @@ function VacationsList() {
     }
   };
 
-  // User view metrics: Prochain congé & Retour au travail prévu le
+  // ── Vacation balance computation (user view) ─────────────
+  const approvedVacations = vacations.filter((v) => v.status === 'Approuvé');
+  const consumedDays = approvedVacations.reduce(
+    (sum, v) => sum + computeDays(v.start_date, v.end_date), 0
+  );
+
+  // Next upcoming approved vacation
   const now = new Date();
   now.setHours(0, 0, 0, 0);
-  const approvedVacations = vacations
+  const upcomingApproved = vacations
     .filter((v) => v.status === 'Approuvé' && new Date(v.end_date) >= now)
     .sort((a, b) => new Date(a.start_date) - new Date(b.start_date));
-  const nextVacation = approvedVacations[0] || null;
+  const nextVacation = upcomingApproved[0] || null;
 
   const getReturnWorkDate = (endDateStr) => {
     if (!endDateStr) return '—';
     const d = new Date(endDateStr);
     d.setDate(d.getDate() + 1);
     return formatDate(d.toISOString().split('T')[0]);
+  };
+
+  // ── Per-requester balance (admin view) ────────────────────
+  const getRequesterConsumed = (requesterId) => {
+    return vacations
+      .filter((v) => v.status === 'Approuvé' && v.requested_by === requesterId)
+      .reduce((sum, v) => sum + computeDays(v.start_date, v.end_date), 0);
   };
 
   return (
@@ -180,7 +218,7 @@ function VacationsList() {
           </div>
           <div>
             <h1 className="text-2xl font-bold text-gray-900">
-              Congés - Gestion des absences
+              Congés — Gestion des absences
             </h1>
             <p className="text-sm text-gray-500 mt-0.5">
               {isAdmin
@@ -190,21 +228,64 @@ function VacationsList() {
           </div>
         </div>
 
-        {/* Add button (user view only) */}
-        {!isAdmin && canAdd && (
+        {/* Add button */}
+        {!isAdmin && (
           <button
             type="button"
             onClick={() => setShowForm(!showForm)}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-semibold shadow-md shadow-blue-600/25 hover:bg-blue-700 transition-all"
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-cyan-600 text-white text-sm font-semibold shadow-md shadow-cyan-600/25 hover:bg-cyan-700 transition-all"
           >
-            <Plus className="w-4 h-4" />
-            Nouvelle demande
+            <Send className="w-4 h-4" />
+            Demander un congé
           </button>
         )}
       </div>
 
+      {/* ───── User Summary Cards (balance + next/return) ───── */}
+      {!isAdmin && !loading && !error && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {/* Balance card */}
+          <VacationBalanceCard consumed={consumedDays} quota={VACATION_QUOTA} />
+
+          {/* Next Vacation Card */}
+          <div className="bg-white rounded-2xl border border-gray-200 p-5 flex items-center gap-4 shadow-sm hover:shadow-md transition-shadow">
+            <div className="w-12 h-12 rounded-xl bg-cyan-50 flex items-center justify-center shrink-0">
+              <Palmtree className="w-6 h-6 text-cyan-600" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs text-gray-500 font-semibold uppercase tracking-wider">Prochain congé</p>
+              <p className="text-base font-bold text-gray-900 truncate mt-0.5">
+                {nextVacation ? formatDate(nextVacation.start_date) : 'Aucun congé prévu'}
+              </p>
+              {nextVacation && (
+                <p className="text-xs text-emerald-600 font-medium mt-0.5">
+                  Approuvé ({computeDays(nextVacation.start_date, nextVacation.end_date)} jour
+                  {computeDays(nextVacation.start_date, nextVacation.end_date) > 1 ? 's' : ''})
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Return to Work Card */}
+          <div className="bg-white rounded-2xl border border-gray-200 p-5 flex items-center gap-4 shadow-sm hover:shadow-md transition-shadow">
+            <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center shrink-0">
+              <Calendar className="w-6 h-6 text-blue-600" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs text-gray-500 font-semibold uppercase tracking-wider">Retour prévu le</p>
+              <p className="text-base font-bold text-gray-900 truncate mt-0.5">
+                {nextVacation ? getReturnWorkDate(nextVacation.end_date) : '—'}
+              </p>
+              {nextVacation && (
+                <p className="text-xs text-gray-400 font-medium mt-0.5">Lendemain de fin de congé</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ───── Request Form (user view) ───── */}
-      {!isAdmin && canAdd && showForm && (
+      {!isAdmin && showForm && (
         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/60">
             <h3 className="text-sm font-bold text-gray-900">Nouvelle demande de congé</h3>
@@ -212,13 +293,9 @@ function VacationsList() {
           </div>
           <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
             {formError && (
-              <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700">
-                {formError}
-              </div>
+              <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700">{formError}</div>
             )}
-
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {/* Start date */}
               <div>
                 <label htmlFor="vac-start" className="block text-sm font-semibold text-gray-700 mb-1.5">
                   Date de début <span className="text-red-500">*</span>
@@ -236,8 +313,6 @@ function VacationsList() {
                   />
                 </div>
               </div>
-
-              {/* End date */}
               <div>
                 <label htmlFor="vac-end" className="block text-sm font-semibold text-gray-700 mb-1.5">
                   Date de fin <span className="text-red-500">*</span>
@@ -257,12 +332,8 @@ function VacationsList() {
                 </div>
               </div>
             </div>
-
-            {/* Reason */}
             <div>
-              <label htmlFor="vac-reason" className="block text-sm font-semibold text-gray-700 mb-1.5">
-                Motif
-              </label>
+              <label htmlFor="vac-reason" className="block text-sm font-semibold text-gray-700 mb-1.5">Motif</label>
               <textarea
                 id="vac-reason"
                 value={formData.reason}
@@ -272,8 +343,6 @@ function VacationsList() {
                 className="w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-gray-50 text-sm text-gray-900 placeholder-gray-400 outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:bg-white resize-none"
               />
             </div>
-
-            {/* Action buttons */}
             <div className="flex items-center justify-end gap-3 pt-2">
               <button
                 type="button"
@@ -285,58 +354,13 @@ function VacationsList() {
               <button
                 type="submit"
                 disabled={saving}
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-semibold shadow-md shadow-blue-600/25 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed transition-all"
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-cyan-600 text-white text-sm font-semibold shadow-md shadow-cyan-600/25 hover:bg-cyan-700 disabled:opacity-60 disabled:cursor-not-allowed transition-all"
               >
-                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                 Soumettre
               </button>
             </div>
           </form>
-        </div>
-      )}
-
-      {/* ───── User Summary Statistics Cards (Requester View) ───── */}
-      {!isAdmin && !loading && !error && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {/* Next Vacation Card */}
-          <div className="bg-white rounded-2xl border border-gray-200 p-5 flex items-center gap-4 shadow-sm hover:shadow-md transition-shadow">
-            <div className="w-12 h-12 rounded-xl bg-cyan-50 flex items-center justify-center shrink-0">
-              <Palmtree className="w-6 h-6 text-cyan-600" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-xs text-gray-500 font-semibold uppercase tracking-wider">
-                Prochain congé
-              </p>
-              <p className="text-lg font-bold text-gray-900 truncate mt-0.5">
-                {nextVacation ? formatDate(nextVacation.start_date) : 'Aucun congé prévu'}
-              </p>
-              {nextVacation && (
-                <p className="text-xs text-emerald-600 font-medium mt-0.5">
-                  Approuvé ({computeDays(nextVacation.start_date, nextVacation.end_date)} jour{computeDays(nextVacation.start_date, nextVacation.end_date) > 1 ? 's' : ''})
-                </p>
-              )}
-            </div>
-          </div>
-
-          {/* Return to Work Card */}
-          <div className="bg-white rounded-2xl border border-gray-200 p-5 flex items-center gap-4 shadow-sm hover:shadow-md transition-shadow">
-            <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center shrink-0">
-              <Calendar className="w-6 h-6 text-blue-600" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-xs text-gray-500 font-semibold uppercase tracking-wider">
-                Retour au travail prévu le
-              </p>
-              <p className="text-lg font-bold text-gray-900 truncate mt-0.5">
-                {nextVacation ? getReturnWorkDate(nextVacation.end_date) : '—'}
-              </p>
-              {nextVacation && (
-                <p className="text-xs text-gray-400 font-medium mt-0.5">
-                  Lendemain de fin de congé
-                </p>
-              )}
-            </div>
-          </div>
         </div>
       )}
 
@@ -361,13 +385,11 @@ function VacationsList() {
           <div className="w-16 h-16 rounded-2xl bg-cyan-50 text-cyan-400 flex items-center justify-center mx-auto mb-4">
             <Palmtree className="w-8 h-8" />
           </div>
-          <h2 className="text-lg font-bold text-gray-900 mb-2">
-            Aucune demande de congé
-          </h2>
+          <h2 className="text-lg font-bold text-gray-900 mb-2">Aucune demande de congé</h2>
           <p className="text-sm text-gray-500 max-w-md mx-auto">
             {isAdmin
-              ? 'Aucune demande de congé n\'a été soumise pour le moment.'
-              : 'Vous n\'avez pas encore soumis de demande de congé. Cliquez sur "Nouvelle demande" pour en créer une.'}
+              ? "Aucune demande de congé n'a été soumise pour le moment."
+              : "Vous n'avez pas encore soumis de demande. Cliquez sur « Demander un congé » pour en créer une."}
           </p>
         </div>
       )}
@@ -384,40 +406,35 @@ function VacationsList() {
                       Demandeur
                     </th>
                   )}
-                  <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-6 py-3.5">
-                    Période
-                  </th>
-                  <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-6 py-3.5">
-                    Durée
-                  </th>
-                  <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-6 py-3.5">
-                    Motif
-                  </th>
-                  <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-6 py-3.5">
-                    Statut
-                  </th>
+                  <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-6 py-3.5">Période</th>
+                  <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-6 py-3.5">Durée</th>
+                  <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-6 py-3.5">Motif</th>
+                  <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-6 py-3.5">Statut</th>
                   {isAdmin && (
-                    <th className="text-right text-xs font-semibold text-gray-500 uppercase tracking-wider px-6 py-3.5">
-                      Actions
-                    </th>
+                    <>
+                      <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-6 py-3.5">
+                        Solde
+                      </th>
+                      <th className="text-right text-xs font-semibold text-gray-500 uppercase tracking-wider px-6 py-3.5">Actions</th>
+                    </>
                   )}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {vacations.map((vac) => {
                   const requesterName = vac.requester
-                    ? `${vac.requester.first_name || ''} ${vac.requester.last_name || ''}`.trim()
+                    ? `${vac.requester?.first_name || ''} ${vac.requester?.last_name || ''}`.trim()
                     : '—';
                   const days = computeDays(vac.start_date, vac.end_date);
                   const isPending = vac.status === 'En attente';
                   const isProcessing = actionLoadingId === vac.id;
 
+                  // Per-requester balance for admin column
+                  const requesterConsumed = isAdmin ? getRequesterConsumed(vac.requested_by) : 0;
+                  const requesterRemaining = Math.max(0, VACATION_QUOTA - requesterConsumed);
+
                   return (
-                    <tr
-                      key={vac.id}
-                      className="hover:bg-blue-50/30 transition-colors duration-150"
-                    >
-                      {/* Requester name (admin only) */}
+                    <tr key={vac.id} className="hover:bg-blue-50/30 transition-colors duration-150">
                       {isAdmin && (
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-2.5">
@@ -430,68 +447,64 @@ function VacationsList() {
                           </div>
                         </td>
                       )}
-
-                      {/* Period */}
                       <td className="px-6 py-4">
-                        <p className="text-sm text-gray-900">
-                          {formatDate(vac.start_date)}
-                        </p>
-                        <p className="text-xs text-gray-500">
-                          au {formatDate(vac.end_date)}
-                        </p>
+                        <p className="text-sm text-gray-900">{formatDate(vac.start_date)}</p>
+                        <p className="text-xs text-gray-500">au {formatDate(vac.end_date)}</p>
                       </td>
-
-                      {/* Duration */}
                       <td className="px-6 py-4">
                         <span className="text-sm font-semibold text-gray-700">
                           {days} jour{days > 1 ? 's' : ''}
                         </span>
                       </td>
-
-                      {/* Reason */}
                       <td className="px-6 py-4">
-                        <p className="text-sm text-gray-600 max-w-[200px] truncate">
-                          {vac.reason || '—'}
-                        </p>
+                        <p className="text-sm text-gray-600 max-w-[200px] truncate">{vac.reason || '—'}</p>
                       </td>
-
-                      {/* Status badge */}
                       <td className="px-6 py-4">
                         <StatusBadge status={vac.status} />
                       </td>
-
-                      {/* Admin action buttons */}
                       {isAdmin && (
-                        <td className="px-6 py-4">
-                          <div className="flex items-center justify-end gap-2">
-                            {isPending && !isProcessing && canEdit && (
-                              <>
-                                <button
-                                  type="button"
-                                  onClick={() => handleStatusChange(vac.id, 'Approuvé')}
-                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 transition-colors shadow-sm"
-                                >
-                                  <Check className="w-3.5 h-3.5" />
-                                  Accepter
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleStatusChange(vac.id, 'Refusé')}
-                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-600 text-white text-xs font-semibold hover:bg-red-700 transition-colors shadow-sm"
-                                >
-                                  <X className="w-3.5 h-3.5" />
-                                  Refuser
-                                </button>
-                              </>
-                            )}
-                            {isProcessing && (
-                              <Loader2 className="w-4 h-4 text-gray-400 animate-spin" />
-                            )}
-                            {!isPending && !isProcessing && (
-                              <span className="text-xs text-gray-400">Traité</span>
-                            )}
-                          </div>
-                        </td>
+                        <>
+                          {/* Per-requester remaining balance */}
+                          <td className="px-6 py-4">
+                            <span className={`text-xs font-bold px-2 py-1 rounded-full ${
+                              requesterRemaining <= 5
+                                ? 'bg-red-100 text-red-700'
+                                : requesterRemaining <= 10
+                                  ? 'bg-amber-100 text-amber-700'
+                                  : 'bg-emerald-100 text-emerald-700'
+                            }`}>
+                              {requesterRemaining}j restants
+                            </span>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex items-center justify-end gap-2">
+                              {isPending && !isProcessing && canEdit && (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleStatusChange(vac.id, 'Approuvé')}
+                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 transition-colors shadow-sm"
+                                  >
+                                    <Check className="w-3.5 h-3.5" />
+                                    Accepter
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleStatusChange(vac.id, 'Refusé')}
+                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-600 text-white text-xs font-semibold hover:bg-red-700 transition-colors shadow-sm"
+                                  >
+                                    <X className="w-3.5 h-3.5" />
+                                    Refuser
+                                  </button>
+                                </>
+                              )}
+                              {isProcessing && <Loader2 className="w-4 h-4 text-gray-400 animate-spin" />}
+                              {!isPending && !isProcessing && (
+                                <span className="text-xs text-gray-400">Traité</span>
+                              )}
+                            </div>
+                          </td>
+                        </>
                       )}
                     </tr>
                   );

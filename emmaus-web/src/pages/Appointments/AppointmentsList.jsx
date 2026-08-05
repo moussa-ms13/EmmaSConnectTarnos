@@ -2,8 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Calendar as CalendarIcon, Clock, MapPin, User,
   Plus, Edit3, Trash2, ChevronLeft, ChevronRight,
-  AlertTriangle, Loader2, Filter, X, CheckCircle2,
-  HelpCircle, AlertCircle, CalendarPlus,
+  AlertTriangle, Loader2, X, CheckCircle2,
+  HelpCircle, AlertCircle, CalendarPlus, Send,
 } from 'lucide-react';
 import { getAllAppointments, deleteAppointment } from '../../services/appointmentService';
 import { fetchCompanions } from '../../services/companionService';
@@ -14,11 +14,11 @@ const WEEKDAYS = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
 
 /**
  * AppointmentsList — Rendez-vous module main page.
- * Features an interactive visual monthly calendar with status legend on the left,
- * and a list of upcoming appointment cards with urgent badges, locations, and actions on the right.
+ * Role-aware: Admins/Editors see "Planifier un RDV", Viewers see "Demander un RDV".
+ * Safe optional chaining on all compagnons relation fields to prevent WSOD.
  */
 function AppointmentsList() {
-  const { canAdd, canEdit, canDelete } = useAuth();
+  const { canAdd, canEdit, canDelete, isViewer } = useAuth();
   const [appointments, setAppointments] = useState([]);
   const [companions, setCompanions] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -33,13 +33,20 @@ function AppointmentsList() {
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    const [aptsRes, compsRes] = await Promise.all([
-      getAllAppointments(),
-      fetchCompanions(),
-    ]);
-    setAppointments(aptsRes.data || []);
-    setCompanions(compsRes.data || []);
-    setLoading(false);
+    try {
+      const [aptsRes, compsRes] = await Promise.all([
+        getAllAppointments(),
+        fetchCompanions(),
+      ]);
+      setAppointments(aptsRes.data || []);
+      setCompanions(compsRes.data || []);
+    } catch (err) {
+      console.error('[AppointmentsList] loadData error:', err);
+      setAppointments([]);
+      setCompanions([]);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -109,48 +116,23 @@ function AppointmentsList() {
   const getStatusStyle = (status) => {
     switch (status) {
       case 'Confirmé':
-        return {
-          badge: 'bg-emerald-100 text-emerald-700 border-emerald-200',
-          dot: 'bg-emerald-500',
-        };
+        return { badge: 'bg-emerald-100 text-emerald-700 border-emerald-200', dot: 'bg-emerald-500' };
       case 'En attente':
-        return {
-          badge: 'bg-amber-100 text-amber-700 border-amber-200',
-          dot: 'bg-amber-500',
-        };
+        return { badge: 'bg-amber-100 text-amber-700 border-amber-200', dot: 'bg-amber-500' };
       case 'À confirmer':
-        return {
-          badge: 'bg-blue-100 text-blue-700 border-blue-200',
-          dot: 'bg-blue-500',
-        };
+        return { badge: 'bg-blue-100 text-blue-700 border-blue-200', dot: 'bg-blue-500' };
       case 'Annulé':
-        return {
-          badge: 'bg-red-100 text-red-700 border-red-200',
-          dot: 'bg-red-500',
-        };
+        return { badge: 'bg-red-100 text-red-700 border-red-200', dot: 'bg-red-500' };
       default:
-        return {
-          badge: 'bg-gray-100 text-gray-700 border-gray-200',
-          dot: 'bg-gray-400',
-        };
+        return { badge: 'bg-gray-100 text-gray-700 border-gray-200', dot: 'bg-gray-400' };
     }
   };
 
-  /**
-   * Format date & time for card display.
-   */
   const formatDateTime = (dateStr) => {
     if (!dateStr) return '—';
     const d = new Date(dateStr);
-    const datePart = d.toLocaleDateString('fr-FR', {
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric',
-    });
-    const timePart = d.toLocaleTimeString('fr-FR', {
-      hour: '2-digit',
-      minute: '2-digit',
-    });
+    const datePart = d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
+    const timePart = d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
     return `${datePart} à ${timePart}`;
   };
 
@@ -176,7 +158,7 @@ function AppointmentsList() {
           </div>
           <div>
             <h1 className="text-2xl font-bold text-gray-900">
-              Rendez-vous - Planification & suivi médical
+              Rendez-vous — Planification &amp; suivi médical
             </h1>
             <p className="text-sm text-gray-500 mt-0.5">
               Organisation et suivi des rendez-vous médicaux, administratifs et d'accompagnement.
@@ -184,7 +166,8 @@ function AppointmentsList() {
           </div>
         </div>
 
-        {canAdd && (
+        {/* Role-based primary button */}
+        {canAdd && !isViewer && (
           <button
             type="button"
             onClick={openCreateModal}
@@ -192,6 +175,16 @@ function AppointmentsList() {
           >
             <Plus className="w-4 h-4" />
             Planifier un RDV
+          </button>
+        )}
+        {isViewer && (
+          <button
+            type="button"
+            onClick={openCreateModal}
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-amber-500 text-white text-sm font-semibold shadow-md shadow-amber-500/25 hover:bg-amber-600 active:scale-[0.98] transition-all shrink-0"
+          >
+            <Send className="w-4 h-4" />
+            Demander un RDV
           </button>
         )}
       </div>
@@ -204,9 +197,7 @@ function AppointmentsList() {
           <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm">
             {/* Calendar header */}
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-base font-bold text-gray-900 capitalize">
-                {monthLabel}
-              </h2>
+              <h2 className="text-base font-bold text-gray-900 capitalize">{monthLabel}</h2>
               <div className="flex items-center gap-1">
                 <button
                   type="button"
@@ -237,37 +228,28 @@ function AppointmentsList() {
             {/* Weekdays header */}
             <div className="grid grid-cols-7 gap-1 text-center mb-2">
               {WEEKDAYS.map((day) => (
-                <div key={day} className="text-xs font-bold text-gray-400 py-1">
-                  {day}
-                </div>
+                <div key={day} className="text-xs font-bold text-gray-400 py-1">{day}</div>
               ))}
             </div>
 
             {/* Calendar Days Grid */}
             <div className="grid grid-cols-7 gap-1">
-              {/* Empty offset cells */}
               {Array.from({ length: startOffset }).map((_, i) => (
                 <div key={`empty-${i}`} className="h-10 sm:h-12 rounded-xl bg-gray-50/40" />
               ))}
-
-              {/* Day cells */}
               {Array.from({ length: daysInMonth }).map((_, i) => {
                 const dayNum = i + 1;
                 const cellDate = new Date(year, month, dayNum);
                 const cellDateStr = cellDate.toISOString().split('T')[0];
                 const dayApts = aptsByDate[cellDateStr] || [];
-
                 const isSelected = selectedDay === cellDateStr;
-                const isToday =
-                  new Date().toISOString().split('T')[0] === cellDateStr;
+                const isToday = new Date().toISOString().split('T')[0] === cellDateStr;
 
                 return (
                   <button
                     key={dayNum}
                     type="button"
-                    onClick={() => {
-                      setSelectedDay(isSelected ? null : cellDateStr);
-                    }}
+                    onClick={() => setSelectedDay(isSelected ? null : cellDateStr)}
                     className={`h-10 sm:h-12 rounded-xl p-1 flex flex-col items-center justify-between border transition-all ${
                       isSelected
                         ? 'border-blue-600 bg-blue-50/80 ring-2 ring-blue-600/20 font-bold'
@@ -277,19 +259,12 @@ function AppointmentsList() {
                     }`}
                   >
                     <span className="text-xs">{dayNum}</span>
-
-                    {/* Indicator dots for appointments */}
                     {dayApts.length > 0 && (
                       <div className="flex items-center gap-0.5 justify-center flex-wrap max-w-full">
-                        {Array.from(
-                          new Set(dayApts.map((a) => a.status || 'Confirmé'))
-                        )
+                        {Array.from(new Set(dayApts.map((a) => a.status || 'Confirmé')))
                           .slice(0, 3)
                           .map((st, idx) => (
-                            <span
-                              key={idx}
-                              className={`w-1.5 h-1.5 rounded-full ${getStatusStyle(st).dot}`}
-                            />
+                            <span key={idx} className={`w-1.5 h-1.5 rounded-full ${getStatusStyle(st).dot}`} />
                           ))}
                       </div>
                     )}
@@ -305,22 +280,17 @@ function AppointmentsList() {
               Légende des statuts
             </h3>
             <div className="grid grid-cols-2 gap-3 text-xs font-semibold text-gray-700">
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" />
-                <span>Confirmé</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-amber-500 shrink-0" />
-                <span>En attente</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-blue-500 shrink-0" />
-                <span>À confirmer</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-red-500 shrink-0" />
-                <span>Annulé</span>
-              </div>
+              {[
+                { label: 'Confirmé', color: 'bg-emerald-500' },
+                { label: 'En attente', color: 'bg-amber-500' },
+                { label: 'À confirmer', color: 'bg-blue-500' },
+                { label: 'Annulé', color: 'bg-red-500' },
+              ].map(({ label, color }) => (
+                <div key={label} className="flex items-center gap-2">
+                  <span className={`w-2.5 h-2.5 rounded-full ${color} shrink-0`} />
+                  <span>{label}</span>
+                </div>
+              ))}
             </div>
           </div>
         </div>
@@ -350,7 +320,8 @@ function AppointmentsList() {
               )}
             </div>
 
-            {canAdd && (
+            {/* Secondary "Planifier" / "Demander" button in panel */}
+            {!isViewer && canAdd && (
               <button
                 type="button"
                 onClick={openCreateModal}
@@ -358,6 +329,16 @@ function AppointmentsList() {
               >
                 <Plus className="w-3.5 h-3.5" />
                 Planifier
+              </button>
+            )}
+            {isViewer && (
+              <button
+                type="button"
+                onClick={openCreateModal}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-50 text-amber-700 hover:bg-amber-100 text-xs font-bold transition-colors"
+              >
+                <Send className="w-3.5 h-3.5" />
+                Demander
               </button>
             )}
           </div>
@@ -371,17 +352,21 @@ function AppointmentsList() {
               </h3>
               <p className="text-sm text-gray-400 mt-1 max-w-sm mx-auto">
                 {selectedDay
-                  ? "Il n'y a pas de consultation ou de rendez-vous programmé pour la date sélectionnée."
-                  : 'Cliquez sur « Planifier un RDV » pour ajouter un nouveau rendez-vous pour un compagnon.'}
+                  ? "Il n'y a pas de consultation programmée pour la date sélectionnée."
+                  : isViewer
+                    ? 'Cliquez sur « Demander un RDV » pour soumettre une demande.'
+                    : 'Cliquez sur « Planifier un RDV » pour ajouter un nouveau rendez-vous.'}
               </p>
             </div>
           ) : (
             <div className="space-y-3">
               {filteredAppointments.map((apt) => {
+                // Safe destructuring — guard against missing join
                 const comp = apt.compagnons || {};
-                const fullName =
-                  `${comp.first_name || ''} ${comp.last_name || ''}`.trim() ||
-                  'Compagnon non spécifié';
+                const firstName = comp?.first_name ?? '';
+                const lastName = comp?.last_name ?? '';
+                const fullName = `${firstName} ${lastName}`.trim() || 'Compagnon non spécifié';
+                const avatarUrl = comp?.avatar_url ?? null;
                 const style = getStatusStyle(apt.status);
 
                 return (
@@ -391,25 +376,22 @@ function AppointmentsList() {
                   >
                     {/* Left: Avatar & Info */}
                     <div className="flex items-start gap-4 min-w-0">
-                      {/* Companion Avatar */}
-                      {comp.avatar_url ? (
+                      {avatarUrl ? (
                         <img
-                          src={comp.avatar_url}
+                          src={avatarUrl}
                           alt={fullName}
                           className="w-12 h-12 rounded-2xl object-cover border border-gray-200 shrink-0"
+                          onError={(e) => { e.target.style.display = 'none'; }}
                         />
                       ) : (
                         <div className="w-12 h-12 rounded-2xl bg-blue-600 text-white font-bold flex items-center justify-center text-base shrink-0 shadow-sm">
-                          {getInitials(comp.first_name, comp.last_name)}
+                          {getInitials(firstName, lastName)}
                         </div>
                       )}
 
                       <div className="min-w-0">
-                        {/* Name + Urgent Badge */}
                         <div className="flex items-center gap-2 flex-wrap">
-                          <h3 className="text-base font-bold text-gray-900 truncate">
-                            {fullName}
-                          </h3>
+                          <h3 className="text-base font-bold text-gray-900 truncate">{fullName}</h3>
                           {apt.is_urgent && (
                             <span className="inline-flex items-center gap-1 bg-red-600 text-white text-[11px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wide shadow-sm animate-pulse">
                               <AlertTriangle className="w-3 h-3" />
@@ -417,62 +399,52 @@ function AppointmentsList() {
                             </span>
                           )}
                         </div>
-
-                        {/* Specialty & Doctor */}
                         <p className="text-sm font-semibold text-gray-700 mt-0.5">
                           {apt.specialty || 'Consultation'}
                           {apt.doctor_name ? ` — ${apt.doctor_name}` : ''}
                         </p>
-
-                        {/* Location */}
                         <div className="flex items-center gap-1.5 text-xs text-gray-500 mt-1.5">
                           <MapPin className="w-3.5 h-3.5 text-gray-400 shrink-0" />
-                          <span className="truncate">
-                            {apt.location || 'Lieu non spécifié'}
-                          </span>
+                          <span className="truncate">{apt.location || 'Lieu non spécifié'}</span>
                         </div>
                       </div>
                     </div>
 
                     {/* Right: Status, Date & Actions */}
                     <div className="flex sm:flex-col items-center sm:items-end justify-between sm:justify-center gap-3 shrink-0 pt-3 sm:pt-0 border-t sm:border-0 border-gray-100">
-                      {/* Status badge */}
-                      <span
-                        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border ${style.badge}`}
-                      >
+                      <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border ${style.badge}`}>
                         <span className={`w-2 h-2 rounded-full ${style.dot}`} />
                         {apt.status || 'Confirmé'}
                       </span>
-
-                      {/* Date & Time */}
                       <div className="flex items-center gap-1.5 text-xs font-semibold text-gray-700">
                         <Clock className="w-3.5 h-3.5 text-gray-400" />
                         <span>{formatDateTime(apt.appointment_date)}</span>
                       </div>
-
-                      {/* Actions */}
-                      <div className="flex items-center gap-1 mt-1">
-                        {canEdit && (
-                          <button
-                            type="button"
-                            onClick={() => openEditModal(apt)}
-                            className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-blue-600 transition-colors"
-                            title="Modifier"
-                          >
-                            <Edit3 className="w-4 h-4" />
-                          </button>
-                        )}
-                        {canDelete && (
-                          <button
-                            type="button"
-                            onClick={() => handleDelete(apt.id)}
-                            className="p-1.5 rounded-lg text-gray-400 hover:bg-red-50 hover:text-red-600 transition-colors"
-                            title="Supprimer"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        )}
-                      </div>
+                      {/* Actions — only for Admin/Editor */}
+                      {!isViewer && (
+                        <div className="flex items-center gap-1 mt-1">
+                          {canEdit && (
+                            <button
+                              type="button"
+                              onClick={() => openEditModal(apt)}
+                              className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-blue-600 transition-colors"
+                              title="Modifier"
+                            >
+                              <Edit3 className="w-4 h-4" />
+                            </button>
+                          )}
+                          {canDelete && (
+                            <button
+                              type="button"
+                              onClick={() => handleDelete(apt.id)}
+                              className="p-1.5 rounded-lg text-gray-400 hover:bg-red-50 hover:text-red-600 transition-colors"
+                              title="Supprimer"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 );

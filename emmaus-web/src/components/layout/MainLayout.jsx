@@ -2,11 +2,14 @@ import React, { useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import TopHeader from './TopHeader';
+import ErrorBoundary from '../ErrorBoundary';
 
 /**
  * MainLayout — Root layout wrapper for the authenticated area.
  * Renders a fixed Sidebar on the left, TopHeader at the top right,
  * and a scrollable main content area below the header with mobile drawer support.
+ * The <Outlet /> is wrapped in an <ErrorBoundary> to prevent white-screen crashes
+ * caused by render errors (e.g. missing joined relations after mutations).
  */
 function MainLayout() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -20,7 +23,9 @@ function MainLayout() {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <TopHeader onMenuClick={() => setMobileMenuOpen(true)} />
         <main className="flex-1 bg-background overflow-y-auto p-4 sm:p-6 md:p-8">
-          <Outlet />
+          <ErrorBoundary>
+            <Outlet />
+          </ErrorBoundary>
         </main>
       </div>
     </div>

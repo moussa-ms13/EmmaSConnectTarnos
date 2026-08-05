@@ -77,6 +77,7 @@ function CompanionForm({ companion, initialData, onSave, onSuccess, onClose }) {
     last_name: '',
     gender: '',
     date_of_birth: '',
+    join_date: '',
     email: '',
     password: '',
     phone: '',
@@ -134,6 +135,7 @@ function CompanionForm({ companion, initialData, onSave, onSuccess, onClose }) {
         last_name: targetData.last_name || '',
         gender: targetData.gender || '',
         date_of_birth: targetData.date_of_birth ? targetData.date_of_birth.split('T')[0] : '',
+        join_date: targetData.join_date ? targetData.join_date.split('T')[0] : '',
         email: targetData.email || '',
         password: '',
         phone: targetData.phone || '',
@@ -320,6 +322,9 @@ function CompanionForm({ companion, initialData, onSave, onSuccess, onClose }) {
 
               {/* Date of birth */}
               <InputField id="cf-dob" name="date_of_birth" label="Date de naissance" icon={Calendar} type="date" placeholder="" value={formData.date_of_birth} onChange={handleChange} half />
+
+              {/* Date d'intégration */}
+              <InputField id="cf-joindate" name="join_date" label="Date d'intégration" icon={Calendar} type="date" placeholder="" value={formData.join_date} onChange={handleChange} half />
 
               {/* Profession */}
               <InputField id="cf-profession" name="profession" label="Profession" icon={Briefcase} placeholder="Menuisier, Cuisinier, Chauffeur..." value={formData.profession} onChange={handleChange} half />

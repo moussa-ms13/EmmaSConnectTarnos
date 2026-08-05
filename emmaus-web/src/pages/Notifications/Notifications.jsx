@@ -1,32 +1,54 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Bell, CheckCircle2, AlertTriangle, Clock, Info, Trash2,
-  Check, Filter, Search,
+  Check, Search, Loader2,
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../components/auth/AuthProvider';
+import { fetchAdminNotifications, fetchUserNotifications } from '../../services/notificationService';
 
+/**
+ * Notifications — Full-page notification centre.
+ * Dynamically fetches role-specific notifications from the database:
+ *  - Admin: pending vacation & appointment requests.
+ *  - Viewer/User: their own approved/rejected/confirmed status changes.
+ */
 function Notifications() {
-  const navigate = useNavigate();
+  const { user, isAdmin } = useAuth();
   const [notifications, setNotifications] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('ALL'); // ALL, UNREAD, ALERT
   const [searchQuery, setSearchQuery] = useState('');
 
+  useEffect(() => {
+    async function load() {
+      setLoading(true);
+      try {
+        const { data } = isAdmin
+          ? await fetchAdminNotifications()
+          : await fetchUserNotifications(user?.id);
+        setNotifications(data || []);
+      } catch (err) {
+        console.error('[Notifications] load error:', err);
+        setNotifications([]);
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+  }, [isAdmin, user?.id]);
+
   const handleMarkAllAsRead = () => {
-    setNotifications((prev) =>
-      prev.map((notif) => ({ ...notif, unread: false }))
-    );
+    setNotifications((prev) => prev.map((n) => ({ ...n, unread: false })));
   };
 
   const handleMarkAsRead = (id) => {
     setNotifications((prev) =>
-      prev.map((notif) =>
-        notif.id === id ? { ...notif, unread: false } : notif
-      )
+      prev.map((n) => (n.id === id ? { ...n, unread: false } : n))
     );
   };
 
   const handleDelete = (id) => {
-    setNotifications((prev) => prev.filter((notif) => notif.id !== id));
+    setNotifications((prev) => prev.filter((n) => n.id !== id));
   };
 
   const filteredNotifications = notifications.filter((notif) => {
@@ -48,25 +70,13 @@ function Notifications() {
   const getIcon = (type) => {
     switch (type) {
       case 'alert':
-        return {
-          icon: AlertTriangle,
-          bg: 'bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400',
-        };
+        return { icon: AlertTriangle, bg: 'bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400' };
       case 'check':
-        return {
-          icon: CheckCircle2,
-          bg: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400',
-        };
+        return { icon: CheckCircle2, bg: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400' };
       case 'clock':
-        return {
-          icon: Clock,
-          bg: 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400',
-        };
+        return { icon: Clock, bg: 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400' };
       default:
-        return {
-          icon: Info,
-          bg: 'bg-gray-100 text-gray-600 dark:bg-slate-800 dark:text-slate-400',
-        };
+        return { icon: Info, bg: 'bg-gray-100 text-gray-600 dark:bg-slate-800 dark:text-slate-400' };
     }
   };
 
@@ -83,7 +93,9 @@ function Notifications() {
               Centre de notifications
             </h1>
             <p className="text-sm text-gray-500 dark:text-slate-400 mt-0.5">
-              Consultez et gérez l'ensemble des alertes et rappels de votre communauté.
+              {isAdmin
+                ? 'Demandes en attente de validation de vos compagnons.'
+                : 'Mises à jour sur vos demandes de congés et rendez-vous.'}
             </p>
           </div>
         </div>
@@ -103,39 +115,24 @@ function Notifications() {
       {/* ───── Filters & Search Bar ───── */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-slate-900 p-4 rounded-2xl border border-gray-100 dark:border-slate-800 shadow-sm">
         <div className="flex items-center gap-2 overflow-x-auto pb-2 sm:pb-0">
-          <button
-            type="button"
-            onClick={() => setFilter('ALL')}
-            className={`px-4 py-2 rounded-xl text-sm font-bold transition-colors shrink-0 ${
-              filter === 'ALL'
-                ? 'bg-blue-600 text-white shadow-sm shadow-blue-500/30'
-                : 'text-gray-600 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-800'
-            }`}
-          >
-            Toutes ({notifications.length})
-          </button>
-          <button
-            type="button"
-            onClick={() => setFilter('UNREAD')}
-            className={`px-4 py-2 rounded-xl text-sm font-bold transition-colors shrink-0 ${
-              filter === 'UNREAD'
-                ? 'bg-blue-600 text-white shadow-sm shadow-blue-500/30'
-                : 'text-gray-600 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-800'
-            }`}
-          >
-            Non lues ({unreadCount})
-          </button>
-          <button
-            type="button"
-            onClick={() => setFilter('ALERT')}
-            className={`px-4 py-2 rounded-xl text-sm font-bold transition-colors shrink-0 ${
-              filter === 'ALERT'
-                ? 'bg-blue-600 text-white shadow-sm shadow-blue-500/30'
-                : 'text-gray-600 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-800'
-            }`}
-          >
-            Urgentes ({alertCount})
-          </button>
+          {[
+            { key: 'ALL',    label: `Toutes (${notifications.length})` },
+            { key: 'UNREAD', label: `Non lues (${unreadCount})` },
+            { key: 'ALERT',  label: `Urgentes (${alertCount})` },
+          ].map(({ key, label }) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setFilter(key)}
+              className={`px-4 py-2 rounded-xl text-sm font-bold transition-colors shrink-0 ${
+                filter === key
+                  ? 'bg-blue-600 text-white shadow-sm shadow-blue-500/30'
+                  : 'text-gray-600 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-800'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
         </div>
 
         <div className="relative w-full sm:w-72">
@@ -150,18 +147,29 @@ function Notifications() {
         </div>
       </div>
 
+      {/* ───── Loading ───── */}
+      {loading && (
+        <div className="flex items-center justify-center py-16">
+          <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+        </div>
+      )}
+
       {/* ───── Notifications List ───── */}
-      {filteredNotifications.length === 0 ? (
+      {!loading && filteredNotifications.length === 0 && (
         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-gray-100 dark:border-slate-800 p-12 text-center shadow-sm">
           <Bell className="w-12 h-12 text-gray-300 dark:text-slate-600 mx-auto mb-3" />
           <h3 className="text-base font-bold text-gray-800 dark:text-white">
             Aucune notification pour le moment
           </h3>
           <p className="text-sm text-gray-400 dark:text-slate-500 mt-1">
-            Vous n'avez aucune nouvelle alerte ou notification en attente.
+            {isAdmin
+              ? 'Aucune demande en attente. Tout est à jour !'
+              : "Vous n'avez aucune mise à jour en attente."}
           </p>
         </div>
-      ) : (
+      )}
+
+      {!loading && filteredNotifications.length > 0 && (
         <div className="space-y-3">
           {filteredNotifications.map((notif) => {
             const iconConfig = getIcon(notif.type);
@@ -177,9 +185,7 @@ function Notifications() {
                 }`}
               >
                 <div className="flex items-start gap-4 flex-1">
-                  <div
-                    className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 mt-0.5 ${iconConfig.bg}`}
-                  >
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 mt-0.5 ${iconConfig.bg}`}>
                     <IconComponent className="w-5 h-5" />
                   </div>
 
@@ -196,13 +202,11 @@ function Notifications() {
                       </span>
                     </div>
 
-                    <h3
-                      className={`text-sm mt-1.5 ${
-                        notif.unread
-                          ? 'font-bold text-gray-900 dark:text-white'
-                          : 'font-semibold text-gray-700 dark:text-slate-300'
-                      }`}
-                    >
+                    <h3 className={`text-sm mt-1.5 ${
+                      notif.unread
+                        ? 'font-bold text-gray-900 dark:text-white'
+                        : 'font-semibold text-gray-700 dark:text-slate-300'
+                    }`}>
                       {notif.title}
                     </h3>
                     <p className="text-xs text-gray-500 dark:text-slate-400 mt-0.5 leading-relaxed">

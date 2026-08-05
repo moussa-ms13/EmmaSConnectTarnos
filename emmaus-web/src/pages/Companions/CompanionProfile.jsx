@@ -587,17 +587,24 @@ function CompanionProfile() {
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-3">
                   {[
-                    { label: 'Prénom',          value: firstName },
-                    { label: 'Nom',             value: lastName  },
-                    { label: 'Date de naissance', value: dobStr },
-                    { label: 'Nationalité',     value: nationality },
-                    { label: 'Téléphone',       value: phoneStr  },
-                    { label: 'E-mail',          value: emailStr  },
-                    { label: 'Adresse',         value: addressStr, full: true },
-                  ].map(({ label, value, full }) => (
+                    { label: 'Prénom',              value: firstName },
+                    { label: 'Nom',                 value: lastName  },
+                    { label: 'Date de naissance',   value: dobStr },
+                    { label: "Date d'intégration",  value: joinDateStr, highlight: true },
+                    { label: 'Nationalité',         value: nationality },
+                    { label: 'Téléphone',           value: phoneStr  },
+                    { label: 'E-mail',              value: emailStr  },
+                    { label: 'Adresse',             value: addressStr, full: true },
+                  ].map(({ label, value, full, highlight }) => (
                     <div key={label} className={`flex justify-between text-sm gap-4 ${full ? 'sm:col-span-2' : ''}`}>
                       <span className="text-gray-400 shrink-0">{label}</span>
-                      <span className="font-semibold text-gray-900 text-right">{value || '—'}</span>
+                      {highlight ? (
+                        <span className="font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-lg text-xs">
+                          {value || '—'}
+                        </span>
+                      ) : (
+                        <span className="font-semibold text-gray-900 text-right">{value || '—'}</span>
+                      )}
                     </div>
                   ))}
                 </div>

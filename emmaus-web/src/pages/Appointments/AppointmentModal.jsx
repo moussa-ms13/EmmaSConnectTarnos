@@ -1,23 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import {
   X, Calendar, Clock, Stethoscope, User, MapPin,
-  AlertTriangle, Loader2, Save, PlusCircle,
+  AlertTriangle, Loader2, Save, PlusCircle, Send,
 } from 'lucide-react';
 import { createAppointment, updateAppointment } from '../../services/appointmentService';
 import { fetchCompanions } from '../../services/companionService';
+import { useAuth } from '../../components/auth/AuthProvider';
 
 const STATUS_OPTIONS = ['Confirmé', 'En attente', 'À confirmer', 'Annulé'];
 
 /**
- * AppointmentModal — Form modal to schedule or edit an appointment.
- * Supports companion selection (with auto-fetch fallback), interactive date + time picker, urgent flag, and status.
- * @param {{
- *   appointment: object | null,
- *   companions: array,
- *   defaultCompanionId: string,
- *   onSuccess: function,
- *   onClose: function
- * }} props
+ * AppointmentModal — Form modal to schedule or request an appointment.
+ *
+ * Role-aware behaviour:
+ *  - Admin / Editor: can choose any status, sees "Planifier un rendez-vous".
+ *  - Viewer:         status is locked to 'En attente', sees "Demander un rendez-vous".
+ *
+ * After save, always calls onSuccess() so the parent re-fetches fresh data
+ * from the DB — prevents WSOD caused by injecting incomplete partial objects.
  */
 function AppointmentModal({
   appointment = null,
@@ -26,6 +26,7 @@ function AppointmentModal({
   onSuccess,
   onClose,
 }) {
+  const { isViewer } = useAuth();
   const isEditing = Boolean(appointment);
 
   const [companionList, setCompanionList] = useState(companions || []);
@@ -57,6 +58,9 @@ function AppointmentModal({
     return '10:00';
   };
 
+  // Viewers always submit with 'En attente'
+  const initialStatus = isViewer ? 'En attente' : (appointment?.status || 'Confirmé');
+
   const [formData, setFormData] = useState({
     compagnon_id: appointment?.compagnon_id || defaultCompanionId || '',
     date: getInitialDate(),
@@ -65,7 +69,7 @@ function AppointmentModal({
     doctor_name: appointment?.doctor_name || '',
     location: appointment?.location || '',
     is_urgent: appointment?.is_urgent || false,
-    status: appointment?.status || 'Confirmé',
+    status: initialStatus,
   });
 
   const [saving, setSaving] = useState(false);
@@ -95,21 +99,19 @@ function AppointmentModal({
         doctor_name: formData.doctor_name.trim() || null,
         location: formData.location.trim() || null,
         is_urgent: formData.is_urgent,
-        status: formData.status,
+        // Viewers are always locked to 'En attente'
+        status: isViewer ? 'En attente' : formData.status,
       };
 
       if (isEditing) {
         const { error: updErr } = await updateAppointment(appointment.id, payload);
-        if (updErr) {
-          throw new Error(updErr.message || 'Erreur lors de la modification du rendez-vous.');
-        }
+        if (updErr) throw new Error(updErr.message || 'Erreur lors de la modification.');
       } else {
         const { error: createErr } = await createAppointment(payload);
-        if (createErr) {
-          throw new Error(createErr.message || 'Erreur lors de la création du rendez-vous.');
-        }
+        if (createErr) throw new Error(createErr.message || 'Erreur lors de la création.');
       }
 
+      // Always delegate re-fetch to parent — never inject partial objects
       if (typeof onSuccess === 'function') {
         onSuccess();
       }
@@ -127,12 +129,18 @@ function AppointmentModal({
         <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100 bg-gray-50/70 shrink-0">
           <div>
             <h3 className="text-lg font-bold text-gray-900">
-              {isEditing ? 'Modifier le rendez-vous' : 'Planifier un rendez-vous'}
+              {isEditing
+                ? 'Modifier le rendez-vous'
+                : isViewer
+                  ? 'Demander un rendez-vous'
+                  : 'Planifier un rendez-vous'}
             </h3>
             <p className="text-sm text-gray-500 mt-0.5">
               {isEditing
                 ? 'Modifiez les informations du rendez-vous médical.'
-                : 'Planifiez une nouvelle consultation pour un compagnon.'}
+                : isViewer
+                  ? 'Soumettez une demande de rendez-vous. Elle sera examinée par un administrateur.'
+                  : 'Planifiez une nouvelle consultation pour un compagnon.'}
             </p>
           </div>
           <button
@@ -143,6 +151,16 @@ function AppointmentModal({
             <X className="w-5 h-5" />
           </button>
         </div>
+
+        {/* ───── Viewer info banner ───── */}
+        {isViewer && !isEditing && (
+          <div className="mx-6 mt-4 px-4 py-3 rounded-xl bg-amber-50 border border-amber-200 flex items-start gap-2.5">
+            <Send className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+            <p className="text-xs text-amber-800 font-medium leading-relaxed">
+              Votre demande sera soumise avec le statut <strong>« En attente »</strong> et nécessite une validation par un administrateur.
+            </p>
+          </div>
+        )}
 
         {/* ───── Form Body ───── */}
         <form onSubmit={handleSubmit} className="p-6 space-y-5 overflow-y-auto">
@@ -178,7 +196,6 @@ function AppointmentModal({
 
           {/* Date & Time */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {/* Date */}
             <div>
               <label htmlFor="apt-date" className="block text-sm font-semibold text-gray-700 mb-1.5">
                 Date <span className="text-red-500">*</span>
@@ -191,17 +208,11 @@ function AppointmentModal({
                   required
                   value={formData.date}
                   onChange={(e) => setFormData((p) => ({ ...p, date: e.target.value }))}
-                  onClick={(e) => {
-                    if ('showPicker' in e.target) {
-                      try { e.target.showPicker(); } catch {}
-                    }
-                  }}
+                  onClick={(e) => { if ('showPicker' in e.target) { try { e.target.showPicker(); } catch {} } }}
                   className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 bg-gray-50 text-sm text-gray-900 outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:bg-white cursor-pointer"
                 />
               </div>
             </div>
-
-            {/* Time */}
             <div>
               <label htmlFor="apt-time" className="block text-sm font-semibold text-gray-700 mb-1.5">
                 Heure <span className="text-red-500">*</span>
@@ -222,7 +233,6 @@ function AppointmentModal({
 
           {/* Specialty & Doctor */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {/* Specialty */}
             <div>
               <label htmlFor="apt-spec" className="block text-sm font-semibold text-gray-700 mb-1.5">
                 Spécialité / Motif <span className="text-red-500">*</span>
@@ -240,8 +250,6 @@ function AppointmentModal({
                 />
               </div>
             </div>
-
-            {/* Doctor */}
             <div>
               <label htmlFor="apt-doc" className="block text-sm font-semibold text-gray-700 mb-1.5">
                 Praticien
@@ -260,9 +268,8 @@ function AppointmentModal({
             </div>
           </div>
 
-          {/* Location & Status */}
+          {/* Location & Status (Status hidden for Viewers) */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {/* Location */}
             <div>
               <label htmlFor="apt-location" className="block text-sm font-semibold text-gray-700 mb-1.5">
                 Lieu / Adresse
@@ -280,41 +287,58 @@ function AppointmentModal({
               </div>
             </div>
 
-            {/* Status */}
-            <div>
-              <label htmlFor="apt-status" className="block text-sm font-semibold text-gray-700 mb-1.5">
-                Statut
-              </label>
-              <select
-                id="apt-status"
-                value={formData.status}
-                onChange={(e) => setFormData((p) => ({ ...p, status: e.target.value }))}
-                className="w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-gray-50 text-sm text-gray-900 outline-none appearance-none cursor-pointer transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:bg-white"
-              >
-                {STATUS_OPTIONS.map((st) => (
-                  <option key={st} value={st}>{st}</option>
-                ))}
-              </select>
-            </div>
+            {/* Status — Admin/Editor only */}
+            {!isViewer && (
+              <div>
+                <label htmlFor="apt-status" className="block text-sm font-semibold text-gray-700 mb-1.5">
+                  Statut
+                </label>
+                <select
+                  id="apt-status"
+                  value={formData.status}
+                  onChange={(e) => setFormData((p) => ({ ...p, status: e.target.value }))}
+                  className="w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-gray-50 text-sm text-gray-900 outline-none appearance-none cursor-pointer transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:bg-white"
+                >
+                  {STATUS_OPTIONS.map((st) => (
+                    <option key={st} value={st}>{st}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Viewer sees a read-only "En attente" badge */}
+            {isViewer && (
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                  Statut
+                </label>
+                <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-amber-200 bg-amber-50 text-sm text-amber-700 font-semibold">
+                  <span className="w-2 h-2 rounded-full bg-amber-500" />
+                  En attente de validation
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* Urgent checkbox toggle */}
-          <div className="pt-2">
-            <label className="flex items-center gap-3 p-3 rounded-xl border border-red-200 bg-red-50/50 cursor-pointer hover:bg-red-50 transition-colors">
-              <input
-                type="checkbox"
-                checked={formData.is_urgent}
-                onChange={(e) => setFormData((p) => ({ ...p, is_urgent: e.target.checked }))}
-                className="w-4 h-4 rounded border-red-300 text-red-600 focus:ring-red-500 cursor-pointer"
-              />
-              <div className="flex items-center gap-1.5">
-                <AlertTriangle className="w-4 h-4 text-red-600" />
-                <span className="text-sm font-bold text-red-800">
-                  Marquer comme rendez-vous URGENT
-                </span>
-              </div>
-            </label>
-          </div>
+          {/* Urgent checkbox toggle — hidden for viewers */}
+          {!isViewer && (
+            <div className="pt-2">
+              <label className="flex items-center gap-3 p-3 rounded-xl border border-red-200 bg-red-50/50 cursor-pointer hover:bg-red-50 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={formData.is_urgent}
+                  onChange={(e) => setFormData((p) => ({ ...p, is_urgent: e.target.checked }))}
+                  className="w-4 h-4 rounded border-red-300 text-red-600 focus:ring-red-500 cursor-pointer"
+                />
+                <div className="flex items-center gap-1.5">
+                  <AlertTriangle className="w-4 h-4 text-red-600" />
+                  <span className="text-sm font-bold text-red-800">
+                    Marquer comme rendez-vous URGENT
+                  </span>
+                </div>
+              </label>
+            </div>
+          )}
 
           {/* ───── Footer ───── */}
           <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-100">
@@ -329,12 +353,21 @@ function AppointmentModal({
             <button
               type="submit"
               disabled={saving}
-              className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-semibold shadow-md shadow-blue-600/25 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed transition-all"
+              className={`inline-flex items-center gap-2 px-6 py-2.5 rounded-xl text-white text-sm font-semibold shadow-md disabled:opacity-60 disabled:cursor-not-allowed transition-all ${
+                isViewer
+                  ? 'bg-amber-500 shadow-amber-500/25 hover:bg-amber-600'
+                  : 'bg-blue-600 shadow-blue-600/25 hover:bg-blue-700'
+              }`}
             >
               {saving ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
                   Enregistrement...
+                </>
+              ) : isViewer ? (
+                <>
+                  <Send className="w-4 h-4" />
+                  Envoyer la demande
                 </>
               ) : (
                 <>
