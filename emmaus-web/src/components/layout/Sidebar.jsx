@@ -121,7 +121,7 @@ function Sidebar({ mobileOpen = false, onClose }) {
     { to: '/formations', label: 'Formations', icon: BookOpen },
     { to: '/documents', label: 'Documents', icon: FileText, badge: loadingBadges ? <Loader2 className="w-3 h-3 animate-spin" /> : documentsCount },
     { to: '/realisations', label: 'Réalisations', icon: Award },
-    { to: '/conges', label: 'Congés', icon: Palmtree },
+    { to: '/conges', label: 'Vacances', icon: Palmtree },
   ];
 
   const navItems = isCompagnon || isViewer ? companionNavItems : staffNavItems;
