@@ -299,7 +299,7 @@ function Dashboard() {
     [weekOffset]
   );
 
-  // Map real appointments data from appointmentService to the calendar grid
+  // Map real appointments AND tasks to the calendar grid
   const scheduleEvents = React.useMemo(() => {
     const eventsByDay = { LUN: [], MAR: [], MER: [], JEU: [], VEN: [], SAM: [], DIM: [] };
     const colors = [
@@ -311,6 +311,7 @@ function Dashboard() {
       'bg-indigo-600',
     ];
 
+    // 1. Appointments
     appointmentsList.forEach((apt, idx) => {
       if (!apt.appointment_date) return;
       const aptDate = new Date(apt.appointment_date);
@@ -330,6 +331,7 @@ function Dashboard() {
 
         eventsByDay[matchedDay.name].push({
           id: apt.id || idx,
+          type: 'appointment',
           time: timeStr,
           title: `${compName} — ${spec}`,
           color: colors[idx % colors.length],
@@ -338,8 +340,35 @@ function Dashboard() {
       }
     });
 
+    // 2. Tasks (placed on their due_date, fallback to created_at)
+    const TASK_PRIORITY_COLORS = {
+      urgent: 'border-red-400 bg-red-50 text-red-800',
+      high:   'border-orange-400 bg-orange-50 text-orange-800',
+      medium: 'border-blue-300 bg-blue-50 text-blue-800',
+      low:    'border-slate-300 bg-slate-50 text-slate-700',
+    };
+
+    tasks.forEach((task) => {
+      if (task.status === 'done') return; // skip completed tasks
+      const dateVal = task.due_date || task.created_at;
+      if (!dateVal) return;
+      const taskDate = new Date(dateVal);
+      const dateStr = taskDate.toISOString().split('T')[0];
+
+      const matchedDay = daysOfWeek.find((d) => d.fullDate === dateStr);
+      if (matchedDay) {
+        eventsByDay[matchedDay.name].push({
+          id: task.id,
+          type: 'task',
+          title: task.title || 'Tâche',
+          priority: task.priority || 'medium',
+          taskColorCls: TASK_PRIORITY_COLORS[task.priority] || TASK_PRIORITY_COLORS.medium,
+        });
+      }
+    });
+
     return eventsByDay;
-  }, [appointmentsList, daysOfWeek]);
+  }, [appointmentsList, tasks, daysOfWeek]);
 
   const notificationsList = [];
   const displayedRecentCompanions = recentCompanions;
@@ -505,12 +534,21 @@ function Dashboard() {
                   const events = scheduleEvents[day.name] || [];
                   return (
                     <div key={day.name} className="space-y-2">
-                      {events.map((ev, i) => (
-                        <div key={i} className={`${ev.color} ${ev.text} p-2 rounded-xl text-left shadow-sm hover:opacity-90 transition-opacity cursor-pointer`}>
-                          <p className="text-[10px] font-bold opacity-90 leading-tight">{ev.time}</p>
-                          <p className="text-xs font-semibold truncate leading-tight mt-0.5">{ev.title}</p>
-                        </div>
-                      ))}
+                      {events.map((ev, i) =>
+                        ev.type === 'task' ? (
+                          <div key={`task-${ev.id}`} className={`border-l-[3px] ${ev.taskColorCls} p-1.5 rounded-r-lg text-left cursor-pointer hover:shadow-sm transition-all`}>
+                            <div className="flex items-center gap-1">
+                              <ClipboardList className="w-3 h-3 shrink-0 opacity-70" />
+                              <p className="text-[10px] font-bold truncate leading-tight">{ev.title}</p>
+                            </div>
+                          </div>
+                        ) : (
+                          <div key={`apt-${ev.id}`} className={`${ev.color} ${ev.text} p-2 rounded-xl text-left shadow-sm hover:opacity-90 transition-opacity cursor-pointer`}>
+                            <p className="text-[10px] font-bold opacity-90 leading-tight">{ev.time}</p>
+                            <p className="text-xs font-semibold truncate leading-tight mt-0.5">{ev.title}</p>
+                          </div>
+                        )
+                      )}
                     </div>
                   );
                 })}
@@ -761,12 +799,21 @@ function Dashboard() {
                   const events = scheduleEvents[day.name] || [];
                   return (
                     <div key={day.name} className="space-y-2">
-                      {events.map((ev, i) => (
-                        <div key={i} className={`${ev.color} ${ev.text} p-2 rounded-xl text-left shadow-sm hover:opacity-90 transition-opacity cursor-pointer`}>
-                          <p className="text-[10px] font-bold opacity-90 leading-tight">{ev.time}</p>
-                          <p className="text-xs font-semibold truncate leading-tight mt-0.5">{ev.title}</p>
-                        </div>
-                      ))}
+                      {events.map((ev, i) =>
+                        ev.type === 'task' ? (
+                          <div key={`task-${ev.id}`} className={`border-l-[3px] ${ev.taskColorCls} p-1.5 rounded-r-lg text-left cursor-pointer hover:shadow-sm transition-all`}>
+                            <div className="flex items-center gap-1">
+                              <ClipboardList className="w-3 h-3 shrink-0 opacity-70" />
+                              <p className="text-[10px] font-bold truncate leading-tight">{ev.title}</p>
+                            </div>
+                          </div>
+                        ) : (
+                          <div key={`apt-${ev.id}`} className={`${ev.color} ${ev.text} p-2 rounded-xl text-left shadow-sm hover:opacity-90 transition-opacity cursor-pointer`}>
+                            <p className="text-[10px] font-bold opacity-90 leading-tight">{ev.time}</p>
+                            <p className="text-xs font-semibold truncate leading-tight mt-0.5">{ev.title}</p>
+                          </div>
+                        )
+                      )}
                     </div>
                   );
                 })}
