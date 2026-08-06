@@ -106,32 +106,31 @@ function Sidebar({ mobileOpen = false, onClose }) {
 
   // ── Dynamic Navigation based on Role ─────────────────────
   const companionNavItems = [
-    { to: `/compagnons/${profile?.id || user?.id || 'demo'}`, label: 'Mon Dossier', icon: User },
-    { to: '/rendez-vous',  label: 'Mes RDV',          icon: Calendar },
-    { to: '/formations',   label: 'Formations',       icon: BookOpen },
-    { to: '/documents',    label: 'Mes Documents',    icon: FileText },
+    { to: `/compagnons/${profile?.id || user?.id || 'demo'}`, label: 'Profile', icon: User },
+    { to: '/rendez-vous', label: 'Mes RDV', icon: Calendar },
+    { to: '/formations', label: 'Formations', icon: BookOpen },
+    { to: '/documents', label: 'Mes Documents', icon: FileText },
     { to: '/realisations', label: 'Mes Réalisations', icon: Award },
   ];
 
   const staffNavItems = [
     { to: '/tableau-de-bord', label: 'Tableau de bord', icon: LayoutDashboard },
-    { to: '/compagnons',      label: 'Compagnons',      icon: Users,    badge: loadingBadges ? <Loader2 className="w-3 h-3 animate-spin" /> : companionsCount },
-    { to: '/sante',           label: 'Santé',           icon: Heart },
-    { to: '/rendez-vous',     label: 'Rendez-vous',     icon: Calendar, badge: loadingBadges ? <Loader2 className="w-3 h-3 animate-spin" /> : appointmentsCount },
-    { to: '/formations',      label: 'Formations',      icon: BookOpen },
-    { to: '/documents',       label: 'Documents',       icon: FileText, badge: loadingBadges ? <Loader2 className="w-3 h-3 animate-spin" /> : documentsCount },
-    { to: '/realisations',    label: 'Réalisations',    icon: Award },
-    { to: '/conges',          label: 'Congés',          icon: Palmtree },
+    { to: '/compagnons', label: 'Compagnons', icon: Users, badge: loadingBadges ? <Loader2 className="w-3 h-3 animate-spin" /> : companionsCount },
+    { to: '/sante', label: 'Santé', icon: Heart },
+    { to: '/rendez-vous', label: 'Rendez-vous', icon: Calendar, badge: loadingBadges ? <Loader2 className="w-3 h-3 animate-spin" /> : appointmentsCount },
+    { to: '/formations', label: 'Formations', icon: BookOpen },
+    { to: '/documents', label: 'Documents', icon: FileText, badge: loadingBadges ? <Loader2 className="w-3 h-3 animate-spin" /> : documentsCount },
+    { to: '/realisations', label: 'Réalisations', icon: Award },
+    { to: '/conges', label: 'Congés', icon: Palmtree },
   ];
 
   const navItems = isCompagnon || isViewer ? companionNavItems : staffNavItems;
 
   // ── Nav link class helper ─────────────────────────────────
   const getLinkClass = ({ isActive }) =>
-    `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${
-      isActive
-        ? 'bg-primary text-white shadow-md shadow-primary/30'
-        : 'text-slate-300 hover:bg-white/10 hover:text-white'
+    `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${isActive
+      ? 'bg-primary text-white shadow-md shadow-primary/30'
+      : 'text-slate-300 hover:bg-white/10 hover:text-white'
     }`;
 
   // ── Shared sidebar content ────────────────────────────────
@@ -176,9 +175,8 @@ function Sidebar({ mobileOpen = false, onClose }) {
           >
             <Icon className="w-5 h-5 shrink-0" />
             <span
-              className={`flex-1 overflow-hidden transition-all duration-300 whitespace-nowrap ${
-                isDesktop && collapsed ? 'w-0 opacity-0 max-w-0' : 'opacity-100 max-w-full'
-              }`}
+              className={`flex-1 overflow-hidden transition-all duration-300 whitespace-nowrap ${isDesktop && collapsed ? 'w-0 opacity-0 max-w-0' : 'opacity-100 max-w-full'
+                }`}
             >
               {label}
             </span>
@@ -194,9 +192,8 @@ function Sidebar({ mobileOpen = false, onClose }) {
       {/* ───── Account Section ───── */}
       <div className="px-3 pb-5 space-y-0.5 shrink-0">
         <p
-          className={`text-[10px] font-semibold tracking-widest text-slate-500 uppercase px-3 mb-1.5 transition-all duration-300 ${
-            isDesktop && collapsed ? 'opacity-0' : 'opacity-100'
-          }`}
+          className={`text-[10px] font-semibold tracking-widest text-slate-500 uppercase px-3 mb-1.5 transition-all duration-300 ${isDesktop && collapsed ? 'opacity-0' : 'opacity-100'
+            }`}
         >
           Compte
         </p>
@@ -209,9 +206,8 @@ function Sidebar({ mobileOpen = false, onClose }) {
           >
             <Settings className="w-5 h-5 shrink-0" />
             <span
-              className={`overflow-hidden transition-all duration-300 whitespace-nowrap ${
-                isDesktop && collapsed ? 'w-0 opacity-0 max-w-0' : 'opacity-100 max-w-full'
-              }`}
+              className={`overflow-hidden transition-all duration-300 whitespace-nowrap ${isDesktop && collapsed ? 'w-0 opacity-0 max-w-0' : 'opacity-100 max-w-full'
+                }`}
             >
               Paramètres
             </span>
@@ -225,9 +221,8 @@ function Sidebar({ mobileOpen = false, onClose }) {
         >
           <LogOut className="w-5 h-5 shrink-0" />
           <span
-            className={`overflow-hidden transition-all duration-300 whitespace-nowrap ${
-              isDesktop && collapsed ? 'w-0 opacity-0 max-w-0' : 'opacity-100 max-w-full'
-            }`}
+            className={`overflow-hidden transition-all duration-300 whitespace-nowrap ${isDesktop && collapsed ? 'w-0 opacity-0 max-w-0' : 'opacity-100 max-w-full'
+              }`}
           >
             Déconnexion
           </span>
@@ -240,9 +235,8 @@ function Sidebar({ mobileOpen = false, onClose }) {
     <>
       {/* ───── Desktop Sidebar ───── */}
       <aside
-        className={`hidden lg:flex h-screen bg-sidebar text-white flex-col shrink-0 transition-all duration-300 overflow-hidden ${
-          collapsed ? 'w-[72px]' : 'w-[260px]'
-        }`}
+        className={`hidden lg:flex h-screen bg-sidebar text-white flex-col shrink-0 transition-all duration-300 overflow-hidden ${collapsed ? 'w-[72px]' : 'w-[260px]'
+          }`}
         onMouseEnter={() => setCollapsed(false)}
         onMouseLeave={() => setCollapsed(true)}
       >
