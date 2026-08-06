@@ -6,7 +6,7 @@ import {
   HelpCircle, AlertCircle, CalendarPlus, Send,
 } from 'lucide-react';
 import { getAllAppointments, deleteAppointment } from '../../services/appointmentService';
-import { fetchCompanions } from '../../services/companionService';
+import { fetchCompanions, fetchPendingAppointmentRequests, markAppointmentRequestHandled } from '../../services/companionService';
 import AppointmentModal from './AppointmentModal';
 import { useAuth } from '../../components/auth/AuthProvider';
 
@@ -21,7 +21,9 @@ function AppointmentsList() {
   const { canAdd, canEdit, canDelete, isViewer } = useAuth();
   const [appointments, setAppointments] = useState([]);
   const [companions, setCompanions] = useState([]);
+  const [pendingRequests, setPendingRequests] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState('calendrier');
 
   // Calendar view state
   const [currentMonthDate, setCurrentMonthDate] = useState(new Date());
@@ -30,20 +32,25 @@ function AppointmentsList() {
   // Modal state
   const [modalOpen, setModalOpen] = useState(false);
   const [editingAppointment, setEditingAppointment] = useState(null);
+  const [defaultCompanionId, setDefaultCompanionId] = useState('');
+  const [handlingRequestId, setHandlingRequestId] = useState(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [aptsRes, compsRes] = await Promise.all([
+      const [aptsRes, compsRes, reqsRes] = await Promise.all([
         getAllAppointments(),
         fetchCompanions(),
+        fetchPendingAppointmentRequests(),
       ]);
       setAppointments(aptsRes.data || []);
       setCompanions(compsRes.data || []);
+      setPendingRequests(reqsRes.data || []);
     } catch (err) {
       console.error('[AppointmentsList] loadData error:', err);
       setAppointments([]);
       setCompanions([]);
+      setPendingRequests([]);
     } finally {
       setLoading(false);
     }
@@ -61,11 +68,22 @@ function AppointmentsList() {
 
   const openCreateModal = () => {
     setEditingAppointment(null);
+    setDefaultCompanionId('');
+    setHandlingRequestId(null);
     setModalOpen(true);
   };
 
   const openEditModal = (apt) => {
     setEditingAppointment(apt);
+    setDefaultCompanionId(apt.compagnon_id || '');
+    setHandlingRequestId(null);
+    setModalOpen(true);
+  };
+
+  const openPlanifyRequest = (req) => {
+    setEditingAppointment(null);
+    setDefaultCompanionId(req.compagnon_id);
+    setHandlingRequestId(req.id);
     setModalOpen(true);
   };
 
@@ -189,7 +207,33 @@ function AppointmentsList() {
         )}
       </div>
 
+      {/* Tabs */}
+      <div className="flex border-b border-gray-200">
+        <button
+          onClick={() => setActiveTab('calendrier')}
+          className={`py-3 px-6 text-sm font-semibold border-b-2 transition-colors ${
+            activeTab === 'calendrier' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+          }`}
+        >
+          Calendrier des consultations
+        </button>
+        <button
+          onClick={() => setActiveTab('demandes')}
+          className={`py-3 px-6 text-sm font-semibold border-b-2 transition-colors flex items-center gap-2 ${
+            activeTab === 'demandes' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+          }`}
+        >
+          Demandes de rendez-vous
+          {pendingRequests.length > 0 && (
+            <span className="bg-amber-500 text-white text-xs px-2 py-0.5 rounded-full">
+              {pendingRequests.length}
+            </span>
+          )}
+        </button>
+      </div>
+
       {/* ───── Main Layout Grid ───── */}
+      {activeTab === 'calendrier' ? (
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* ───── Left Column (Calendar & Legend) ───── */}
         <div className="lg:col-span-5 space-y-4">
@@ -453,17 +497,74 @@ function AppointmentsList() {
           )}
         </div>
       </div>
+      ) : (
+        /* ───── Demandes de rendez-vous ───── */
+        <div className="space-y-4">
+          {pendingRequests.length === 0 ? (
+            <div className="bg-white rounded-2xl border border-gray-200 p-12 text-center shadow-sm">
+              <CheckCircle2 className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+              <h3 className="text-base font-bold text-gray-700">Aucune demande en attente</h3>
+              <p className="text-sm text-gray-400 mt-1">Toutes les demandes de rendez-vous ont été traitées.</p>
+            </div>
+          ) : (
+            pendingRequests.map((req) => {
+              const comp = req.compagnon || {};
+              const fullName = `${comp.first_name || ''} ${comp.last_name || ''}`.trim() || 'Compagnon inconnu';
+              return (
+                <div key={req.id} className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm hover:shadow-md transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex items-start gap-4 min-w-0">
+                    {comp.avatar_url ? (
+                      <img
+                        src={comp.avatar_url}
+                        alt={fullName}
+                        className="w-12 h-12 rounded-2xl object-cover border border-gray-200 shrink-0"
+                        onError={(e) => { e.target.style.display = 'none'; }}
+                      />
+                    ) : (
+                      <div className="w-12 h-12 rounded-2xl bg-blue-600 text-white font-bold flex items-center justify-center text-base shrink-0 shadow-sm">
+                        {getInitials(comp.first_name, comp.last_name)}
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <h3 className="text-base font-bold text-gray-900 truncate">{fullName}</h3>
+                      <p className="text-sm text-gray-700 mt-1 italic break-words line-clamp-3">"{req.message}"</p>
+                      <p className="text-xs text-gray-400 mt-1.5">Reçue le {new Date(req.created_at).toLocaleDateString('fr-FR')}</p>
+                    </div>
+                  </div>
+                  {!isViewer && canAdd && (
+                    <button
+                      onClick={() => openPlanifyRequest(req)}
+                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-50 text-blue-700 hover:bg-blue-100 text-sm font-bold transition-colors shrink-0"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Planifier
+                    </button>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
 
       {/* ───── Create / Edit Modal ───── */}
       {modalOpen && (
         <AppointmentModal
           appointment={editingAppointment}
           companions={companions}
-          onSuccess={() => {
+          defaultCompanionId={defaultCompanionId}
+          onSuccess={async () => {
             setModalOpen(false);
+            if (handlingRequestId) {
+              await markAppointmentRequestHandled(handlingRequestId);
+              setHandlingRequestId(null);
+            }
             loadData();
           }}
-          onClose={() => setModalOpen(false)}
+          onClose={() => {
+            setModalOpen(false);
+            setHandlingRequestId(null);
+          }}
         />
       )}
     </div>

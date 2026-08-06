@@ -20,6 +20,7 @@
 - **Phase 8:** User Vacation Enhancements & Settings Profile Separation — ✅ Complete.
 - **Phase 13:** Dashboard Badge Removal & Global Responsiveness Audit — ✅ Complete.
 - **Phase 14:** Dynamic Sidebar Notification Badges — ✅ Complete.
+- **Phase 15:** Batch Improvements (Crash Fix, Sidebar, RBAC, Vacation Counter, Notifications, Join Date) — ✅ Complete.
 - **Current Task:** _No active task — awaiting next instruction._
 
 ## Completed Tasks

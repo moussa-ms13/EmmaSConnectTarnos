@@ -13,6 +13,7 @@ import {
   fetchCompanionAppointments,
   fetchFormations, addFormation, deleteFormation,
   fetchSkills, addSkill, deleteSkill,
+  submitAppointmentRequest,
 } from '../../services/companionService';
 import { useAuth } from '../../components/auth/AuthProvider';
 import AppointmentModal from '../Appointments/AppointmentModal';
@@ -174,7 +175,11 @@ function CompanionProfile() {
   const [showAppointmentModal, setShowAppointmentModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showMsgModal, setShowMsgModal] = useState(false);
-  const [noteValue, setNoteValue] = useState('');
+
+  // Appointment Request State
+  const [requestMessage, setRequestMessage] = useState('');
+  const [requestSubmitting, setRequestSubmitting] = useState(false);
+  const [requestSuccess, setRequestSuccess] = useState(false);
 
   // ── Real data state for tabs ──────────────────────────────
   const [documents, setDocuments] = useState([]);
@@ -215,7 +220,7 @@ function CompanionProfile() {
         const { data, error: fetchError } = await getCompanionById(id);
         if (fetchError) setError(fetchError?.message || 'Erreur de chargement.');
         else if (!data) setError('Compagnon introuvable.');
-        else { setCompanion(data); setNoteValue(data?.notes || ''); }
+        else { setCompanion(data); }
       } catch (err) {
         setError(err?.message || 'Erreur inattendue.');
       } finally {
@@ -304,6 +309,19 @@ function CompanionProfile() {
       }));
       setNewSkill({ category: 'techniques', name: '', progress: 0 });
       setShowSkillModal(false);
+    }
+  };
+
+  // ── Handlers: Submit Appointment Request ──────────────────
+  const handleAppointmentRequest = async () => {
+    if (!requestMessage.trim()) return;
+    setRequestSubmitting(true);
+    const { error } = await submitAppointmentRequest(id, requestMessage);
+    setRequestSubmitting(false);
+    if (!error) {
+      setRequestSuccess(true);
+      setRequestMessage('');
+      setTimeout(() => setRequestSuccess(false), 4000);
     }
   };
 
@@ -653,22 +671,39 @@ function CompanionProfile() {
                 </div>
               )}
 
-              {/* Note interne */}
+              {/* Demande de rendez-vous */}
               <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-                <div className="flex items-center gap-2.5 pb-4 mb-4 border-b border-gray-100">
-                  <FileText className="w-5 h-5 text-gray-500" />
-                  <h3 className="text-sm font-bold text-gray-900">Note interne</h3>
+                <div className="flex items-center justify-between pb-4 mb-4 border-b border-gray-100">
+                  <div className="flex items-center gap-2.5">
+                    <CalendarPlus className="w-5 h-5 text-gray-500" />
+                    <h3 className="text-sm font-bold text-gray-900">Demande de rendez-vous</h3>
+                  </div>
                 </div>
-                {canEdit ? (
-                  <textarea
-                    value={noteValue}
-                    onChange={(e) => setNoteValue(e.target.value)}
-                    rows={5}
-                    placeholder="Ajouter une note sur ce compagnon..."
-                    className="w-full text-sm text-gray-700 border border-gray-200 rounded-lg p-3 resize-none outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20 transition-all placeholder-gray-300"
-                  />
+                {requestSuccess ? (
+                  <div className="flex flex-col items-center justify-center p-4 text-center">
+                    <CheckCircle2 className="w-8 h-8 text-emerald-500 mb-2" />
+                    <p className="text-sm font-bold text-emerald-700">Demande envoyée</p>
+                    <p className="text-xs text-emerald-600 mt-1">Un responsable vous contactera pour planifier le rendez-vous.</p>
+                  </div>
                 ) : (
-                  <p className="text-sm text-gray-600 leading-relaxed">{noteValue || 'Aucune note.'}</p>
+                  <div className="space-y-3">
+                    <textarea
+                      value={requestMessage}
+                      onChange={(e) => setRequestMessage(e.target.value)}
+                      rows={4}
+                      placeholder="Décrivez le motif de votre demande (ex: aide administrative, suivi, etc.)..."
+                      className="w-full text-sm text-gray-700 border border-gray-200 rounded-lg p-3 resize-none outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20 transition-all placeholder-gray-300"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAppointmentRequest}
+                      disabled={!requestMessage.trim() || requestSubmitting}
+                      className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                    >
+                      {requestSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <CalendarPlus className="w-4 h-4" />}
+                      Envoyer la demande
+                    </button>
+                  </div>
                 )}
               </div>
             </div>

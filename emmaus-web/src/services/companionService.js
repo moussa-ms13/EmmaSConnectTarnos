@@ -513,6 +513,53 @@ export async function fetchCompanionAppointments(companionId) {
   return { data: data || [], error };
 }
 
+/**
+ * Submit an appointment request for a companion.
+ * @param {string} compagnonId
+ * @param {string} message
+ * @returns {{ data, error }}
+ */
+export async function submitAppointmentRequest(compagnonId, message) {
+  const { data, error } = await supabase
+    .from('appointment_requests')
+    .insert([{
+      compagnon_id: compagnonId,
+      message,
+      status: 'En attente'
+    }])
+    .select()
+    .single();
+  return { data, error };
+}
+
+/**
+ * Fetch all pending appointment requests.
+ * @returns {{ data, error }}
+ */
+export async function fetchPendingAppointmentRequests() {
+  const { data, error } = await supabase
+    .from('appointment_requests')
+    .select('*, compagnon:compagnons(first_name, last_name, avatar_url)')
+    .eq('status', 'En attente')
+    .order('created_at', { ascending: false });
+  return { data: data || [], error };
+}
+
+/**
+ * Mark an appointment request as handled (Traité).
+ * @param {string} requestId
+ * @returns {{ data, error }}
+ */
+export async function markAppointmentRequestHandled(requestId) {
+  const { data, error } = await supabase
+    .from('appointment_requests')
+    .update({ status: 'Traité' })
+    .eq('id', requestId)
+    .select()
+    .single();
+  return { data, error };
+}
+
 // ─────────────────────────────────────────────────────────────
 // Formations (Profile Tab)
 // Real schema: many-to-many via public.compagnon_formations
