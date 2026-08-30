@@ -237,29 +237,16 @@ function TopHeader({ onMenuClick = () => {} }) {
 
               <div className="max-h-80 overflow-y-auto divide-y divide-gray-100 dark:divide-slate-800">
                 {messages.length === 0 ? (
-                  <div className="p-4 space-y-3">
-                    <div className="flex items-start gap-3">
-                      <div className="w-8 h-8 rounded-full bg-red-100 text-red-500 flex items-center justify-center shrink-0">
-                        <AlertCircle className="w-4 h-4" />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-xs font-bold text-gray-900 dark:text-white">
-                          Henri Moreau — RDV cardiologue demain 09:30
-                        </p>
-                        <p className="text-xs text-gray-400 mt-0.5">Il y a 1h</p>
-                      </div>
+                  <div className="p-6 text-center">
+                    <div className="w-12 h-12 rounded-full bg-gray-100 dark:bg-slate-800 flex items-center justify-center mx-auto mb-3">
+                      <Bell className="w-5 h-5 text-gray-400" />
                     </div>
-                    <div className="flex items-start gap-3">
-                      <div className="w-8 h-8 rounded-full bg-amber-100 text-amber-500 flex items-center justify-center shrink-0">
-                        <AlertCircle className="w-4 h-4" />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-xs font-bold text-gray-900 dark:text-white">
-                          Robert Petit — Carte Vitale expirée
-                        </p>
-                        <p className="text-xs text-gray-400 mt-0.5">Il y a 2h</p>
-                      </div>
-                    </div>
+                    <p className="text-xs font-semibold text-gray-500 dark:text-slate-400">
+                      <span>Aucune notification</span>
+                    </p>
+                    <p className="text-[11px] text-gray-400 mt-0.5">
+                      <span>Vous êtes à jour !</span>
+                    </p>
                   </div>
                 ) : (
                   messages.map((m) => {

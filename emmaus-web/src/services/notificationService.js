@@ -179,6 +179,17 @@ export async function fetchUserNotifications(userId) {
  */
 export async function getNotificationCount(isAdmin, userId) {
   try {
+    // Count unread rows from the notifications table
+    let notifTableCount = 0;
+    if (userId) {
+      const notifRes = await supabase
+        .from('notifications')
+        .select('id', { count: 'exact', head: true })
+        .or(`user_id.eq.${userId},receiver_id.eq.${userId}`)
+        .eq('is_read', false);
+      notifTableCount = notifRes.count || 0;
+    }
+
     if (isAdmin) {
       const [vacRes, aptRes] = await Promise.all([
         supabase
@@ -190,17 +201,56 @@ export async function getNotificationCount(isAdmin, userId) {
           .select('id', { count: 'exact', head: true })
           .eq('status', 'En attente'),
       ]);
-      return (vacRes.count || 0) + (aptRes.count || 0);
+      return (vacRes.count || 0) + (aptRes.count || 0) + notifTableCount;
     } else {
-      if (!userId) return 0;
+      if (!userId) return notifTableCount;
       const vacRes = await supabase
         .from('vacations')
         .select('id', { count: 'exact', head: true })
         .eq('requested_by', userId)
         .in('status', ['Approuvé', 'Refusé']);
-      return vacRes.count || 0;
+      return (vacRes.count || 0) + notifTableCount;
     }
   } catch {
     return 0;
   }
 }
+
+/**
+ * Fetch all notifications from the notifications table for a user.
+ * Used by the bell dropdown and /notifications page.
+ */
+export async function fetchNotificationsForUser(userId) {
+  if (!userId) return { data: [], error: null };
+
+  try {
+    const { data, error } = await supabase
+      .from('notifications')
+      .select('*')
+      .or(`user_id.eq.${userId},receiver_id.eq.${userId}`)
+      .order('created_at', { ascending: false })
+      .limit(50);
+
+    return { data: data || [], error };
+  } catch (err) {
+    console.error('[notificationService] fetchNotificationsForUser error:', err);
+    return { data: [], error: err };
+  }
+}
+
+/**
+ * Mark a notification as read in the notifications table.
+ */
+export async function markNotificationAsRead(notifId) {
+  if (!notifId) return { error: null };
+  try {
+    const { error } = await supabase
+      .from('notifications')
+      .update({ is_read: true })
+      .eq('id', notifId);
+    return { error };
+  } catch (err) {
+    return { error: err };
+  }
+}
+

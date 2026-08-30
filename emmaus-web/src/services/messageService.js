@@ -3,182 +3,130 @@ import supabase from './supabaseClient';
 /**
  * messageService — Handles communications, messages, and notifications
  * between staff members and companions.
+ * NO mock/demo data. Real Supabase only.
  */
-
-const DEMO_MESSAGES = [
-  {
-    id: 'msg-1',
-    sender_id: 'demo-admin-id',
-    receiver_id: 'current-user',
-    content: 'Votre demande de congé pour août a été validée par la coordination.',
-    is_read: false,
-    type: 'alert',
-    created_at: new Date(Date.now() - 3600000 * 2).toISOString(),
-    sender_name: 'Coordination Emmaüs Connect',
-  },
-  {
-    id: 'msg-2',
-    sender_id: 'demo-companion-id',
-    receiver_id: 'current-user',
-    content: 'Bonjour Sophie, mon rendez-vous de mardi est confirmé. Merci !',
-    is_read: false,
-    type: 'message',
-    created_at: new Date(Date.now() - 3600000 * 5).toISOString(),
-    sender_name: 'Ahmed Benali (Compagnon)',
-  },
-  {
-    id: 'msg-3',
-    sender_id: 'demo-admin-id',
-    receiver_id: 'current-user',
-    content: 'Rappel : Réunion débriefing plannings à 14h00 en salle 2.',
-    is_read: true,
-    type: 'alert',
-    created_at: new Date(Date.now() - 3600000 * 24).toISOString(),
-    sender_name: 'Sophie Renaud',
-  },
-];
 
 /**
  * Fetch messages for the specified user (both sent and received).
- * @param {string} userId
- * @returns {Promise<{ data: array, error: object | null }>}
+ * Uses sender_name column directly — no FK join to profiles.
  */
 export async function getUserMessages(userId) {
-  try {
-    if (!userId) {
-      return { data: DEMO_MESSAGES, error: null };
-    }
+  if (!userId) return { data: [], error: null };
 
+  try {
     const { data, error } = await supabase
       .from('messages')
-      .select('*, sender:profiles!sender_id(first_name, last_name)')
+      .select('*')
       .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`)
       .order('created_at', { ascending: false });
 
-    if (error || !data || data.length === 0) {
-      return { data: DEMO_MESSAGES, error: error || null };
-    }
-
-    return { data, error: null };
+    return { data: data || [], error };
   } catch (err) {
-    console.error('❌ Unexpected error in getUserMessages:', err);
-    return { data: DEMO_MESSAGES, error: null };
+    console.error('[messageService] getUserMessages error:', err);
+    return { data: [], error: err };
   }
 }
 
 /**
  * Fetch unread messages for a specific receiver.
- * @param {string} userId
- * @returns {Promise<{ data: array, error: object | null }>}
  */
 export async function getUnreadMessages(userId) {
-  try {
-    if (!userId) {
-      const unreadDemo = DEMO_MESSAGES.filter((m) => !m.is_read);
-      return { data: unreadDemo, error: null };
-    }
+  if (!userId) return { data: [], error: null };
 
+  try {
     const { data, error } = await supabase
       .from('messages')
-      .select('*, sender:profiles!sender_id(first_name, last_name)')
+      .select('*')
       .eq('receiver_id', userId)
       .eq('is_read', false)
       .order('created_at', { ascending: false });
 
-    if (error || !data || data.length === 0) {
-      const unreadDemo = DEMO_MESSAGES.filter((m) => !m.is_read);
-      return { data: unreadDemo, error: null };
-    }
-
-    return { data, error: null };
+    return { data: data || [], error };
   } catch (err) {
-    console.error('❌ Unexpected error in getUnreadMessages:', err);
-    return { data: DEMO_MESSAGES.filter((m) => !m.is_read), error: null };
+    console.error('[messageService] getUnreadMessages error:', err);
+    return { data: [], error: err };
   }
 }
 
 /**
- * Send a new message or alert.
- * @param {object} payload - { sender_id, receiver_id, content, type }
- * @returns {Promise<{ data: object | null, error: object | null }>}
+ * Send a message to ONE or MULTIPLE recipients.
+ * @param {object} payload - { sender_id, receiver_ids (array), content, type, sender_name }
+ * If receiver_id (string) is provided instead of receiver_ids, wraps it.
  */
 export async function sendMessage(payload) {
-  try {
-    const messageData = {
-      sender_id: payload.sender_id,
-      receiver_id: payload.receiver_id,
-      content: payload.content,
-      type: payload.type || 'message',
-      is_read: false,
-      sender_name: payload.sender_name || null,
-      created_at: new Date().toISOString(),
-    };
+  const receiverIds = payload.receiver_ids
+    || (payload.receiver_id ? [payload.receiver_id] : []);
 
-    const { data, error } = await supabase
-      .from('messages')
-      .insert([messageData])
-      .select('*')
-      .maybeSingle();
-
-    if (error) {
-      console.error('⚠️ Error inserting message:', error.message);
-      // Fallback in demo mode
-      return {
-        data: { ...messageData, id: `msg-${Date.now()}` },
-        error: null,
-      };
-    }
-
-    // Immediately dispatch notification row to notifications table for recipient
-    try {
-      const notifData = {
-        user_id: payload.receiver_id,
-        receiver_id: payload.receiver_id,
-        sender_id: payload.sender_id,
-        type: payload.type || 'message',
-        title: payload.sender_name
-          ? `Message de ${payload.sender_name}`
-          : (payload.type === 'alert' ? 'Alerte prioritaire' : 'Nouveau message'),
-        content: payload.content,
-        is_read: false,
-        created_at: new Date().toISOString(),
-      };
-
-      await supabase
-        .from('notifications')
-        .insert([notifData]);
-    } catch (notifErr) {
-      console.warn('⚠️ Could not insert notification row:', notifErr?.message || notifErr);
-    }
-
-    return { data, error: null };
-  } catch (err) {
-    console.error('❌ Unexpected error in sendMessage:', err);
-    return {
-      data: {
-        id: `msg-${Date.now()}`,
-        ...payload,
-        is_read: false,
-        created_at: new Date().toISOString(),
-      },
-      error: null,
-    };
+  if (receiverIds.length === 0) {
+    return { data: null, error: new Error('Aucun destinataire sélectionné.') };
   }
+
+  const results = [];
+  const errors = [];
+
+  for (const rid of receiverIds) {
+    try {
+      const messageData = {
+        sender_id: payload.sender_id,
+        receiver_id: rid,
+        content: payload.content,
+        type: payload.type || 'message',
+        is_read: false,
+        sender_name: payload.sender_name || null,
+        created_at: new Date().toISOString(),
+      };
+
+      const { data, error } = await supabase
+        .from('messages')
+        .insert([messageData])
+        .select('*')
+        .maybeSingle();
+
+      if (error) {
+        console.warn(`[messageService] insert message for ${rid}:`, error.message);
+        errors.push(error);
+      } else {
+        results.push(data);
+      }
+
+      // Dispatch notification row for recipient
+      try {
+        await supabase
+          .from('notifications')
+          .insert([{
+            user_id: rid,
+            receiver_id: rid,
+            sender_id: payload.sender_id,
+            type: payload.type || 'message',
+            title: payload.sender_name
+              ? `Message de ${payload.sender_name}`
+              : (payload.type === 'alert' ? 'Alerte prioritaire' : 'Nouveau message'),
+            content: payload.content,
+            is_read: false,
+          }]);
+      } catch (notifErr) {
+        console.warn('[messageService] notification insert failed:', notifErr?.message);
+      }
+    } catch (err) {
+      console.error(`[messageService] sendMessage to ${rid}:`, err);
+      errors.push(err);
+    }
+  }
+
+  return {
+    data: results.length > 0 ? results : null,
+    error: errors.length > 0 ? errors[0] : null,
+  };
 }
 
 /**
- * Mark a message as read.
- * @param {string} messageId
- * @returns {Promise<{ error: object | null }>}
+ * Mark a message as read. Also marks corresponding notification.
  */
 export async function markMessageAsRead(messageId) {
-  try {
-    if (messageId && messageId.startsWith('msg-')) {
-      // Local demo message
-      return { error: null };
-    }
+  if (!messageId) return { error: null };
 
-    const [msgRes, notifRes] = await Promise.all([
+  try {
+    const [msgRes] = await Promise.all([
       supabase
         .from('messages')
         .update({ is_read: true })
@@ -186,12 +134,14 @@ export async function markMessageAsRead(messageId) {
       supabase
         .from('notifications')
         .update({ is_read: true })
-        .eq('id', messageId),
+        .eq('id', messageId)
+        .then(() => {}) // ignore notifications error silently
+        .catch(() => {}),
     ]);
 
-    return { error: msgRes.error || notifRes.error || null };
+    return { error: msgRes.error || null };
   } catch (err) {
-    console.error('❌ Error in markMessageAsRead:', err);
+    console.error('[messageService] markMessageAsRead error:', err);
     return { error: err };
   }
 }
