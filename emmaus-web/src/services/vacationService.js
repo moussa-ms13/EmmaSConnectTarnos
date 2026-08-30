@@ -19,10 +19,27 @@ export async function createVacationRequest(data) {
     return { data: null, error: authError || new Error('Utilisateur non authentifié.') };
   }
 
-  // Ensure a profile row exists for the FK constraint
-  await supabase
+  // Ensure a profile row exists for the FK constraint.
+  // Try upsert first; if RLS blocks INSERT, try a plain insert as fallback.
+  const { error: upsertErr } = await supabase
     .from('profiles')
-    .upsert({ id: user.id }, { onConflict: 'id', ignoreDuplicates: true });
+    .upsert(
+      { id: user.id, first_name: user.user_metadata?.first_name || null, last_name: user.user_metadata?.last_name || null },
+      { onConflict: 'id', ignoreDuplicates: true }
+    );
+
+  if (upsertErr) {
+    // Fallback: try plain insert (ignore duplicate key errors)
+    const { error: insertErr } = await supabase
+      .from('profiles')
+      .insert({ id: user.id })
+      .select()
+      .maybeSingle();
+    // If both fail and it's NOT a duplicate key error, surface it
+    if (insertErr && !insertErr.message?.includes('duplicate') && !insertErr.message?.includes('already exists')) {
+      console.warn('[vacationService] Could not ensure profile row:', insertErr.message);
+    }
+  }
 
   const payload = {
     ...data,
