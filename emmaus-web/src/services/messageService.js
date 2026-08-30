@@ -51,7 +51,7 @@ export async function getUserMessages(userId) {
 
     const { data, error } = await supabase
       .from('messages')
-      .select('*')
+      .select('*, sender:profiles!sender_id(first_name, last_name)')
       .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`)
       .order('created_at', { ascending: false });
 
@@ -80,7 +80,7 @@ export async function getUnreadMessages(userId) {
 
     const { data, error } = await supabase
       .from('messages')
-      .select('*')
+      .select('*, sender:profiles!sender_id(first_name, last_name)')
       .eq('receiver_id', userId)
       .eq('is_read', false)
       .order('created_at', { ascending: false });
@@ -110,6 +110,7 @@ export async function sendMessage(payload) {
       content: payload.content,
       type: payload.type || 'message',
       is_read: false,
+      sender_name: payload.sender_name || null,
       created_at: new Date().toISOString(),
     };
 

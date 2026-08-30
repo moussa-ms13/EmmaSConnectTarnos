@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
-  Bell, Search, User, LogOut, MessageSquare, AlertCircle, Plus, Check, X, Menu, ChevronDown,
+  Bell, Search, User, LogOut, MessageSquare, AlertCircle, Plus, Check, X, Menu, ChevronDown, CheckCircle2,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthProvider';
 import { getUnreadMessages, markMessageAsRead } from '../../services/messageService';
@@ -24,6 +24,7 @@ function TopHeader({ onMenuClick = () => {} }) {
   const [showDropdown, setShowDropdown] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showModal, setShowModal] = useState(false);
+  const [readingMessage, setReadingMessage] = useState(null);
   const dropdownRef = useRef(null);
   const profileRef = useRef(null);
 
@@ -149,6 +150,17 @@ function TopHeader({ onMenuClick = () => {} }) {
     setMessages((prev) => prev.filter((m) => m.id !== id));
   };
 
+  /** Open the read-message modal */
+  const handleOpenMessage = async (msg) => {
+    setReadingMessage(msg);
+    setShowDropdown(false);
+    // Mark as read immediately
+    if (msg.id) {
+      await markMessageAsRead(msg.id);
+      setMessages((prev) => prev.filter((m) => m.id !== msg.id));
+    }
+  };
+
   const badgeCount = messages.length + notifCount || 0;
 
   const handleLogout = async () => {
@@ -250,10 +262,15 @@ function TopHeader({ onMenuClick = () => {} }) {
                     </div>
                   </div>
                 ) : (
-                  messages.map((m) => (
+                  messages.map((m) => {
+                    const senderDisplay = m.sender
+                      ? `${m.sender.first_name || ''} ${m.sender.last_name || ''}`.trim()
+                      : m.sender_name || 'Équipe Emmaüs Connect';
+                    return (
                     <div
                       key={m.id}
-                      className="p-4 hover:bg-gray-50 dark:hover:bg-slate-800/50 transition-colors flex items-start justify-between gap-3"
+                      onClick={() => handleOpenMessage({ ...m, senderDisplay })}
+                      className="p-4 hover:bg-gray-50 dark:hover:bg-slate-800/50 transition-colors flex items-start justify-between gap-3 cursor-pointer"
                     >
                       <div className="flex items-start gap-3 min-w-0">
                         <div
@@ -271,7 +288,7 @@ function TopHeader({ onMenuClick = () => {} }) {
                         </div>
                         <div className="min-w-0">
                           <p className="text-xs font-bold text-gray-900 dark:text-white truncate">
-                            {m.sender_name || 'Équipe Emmaüs Connect'}
+                            {senderDisplay}
                           </p>
                           <p className="text-xs text-gray-600 dark:text-slate-300 mt-0.5 line-clamp-2">
                             {m.content}
@@ -288,7 +305,8 @@ function TopHeader({ onMenuClick = () => {} }) {
                         <Check className="w-4 h-4" />
                       </button>
                     </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             </div>
@@ -351,6 +369,74 @@ function TopHeader({ onMenuClick = () => {} }) {
         onClose={() => setShowModal(false)}
         onMessageSent={loadNotifications}
       />
+
+      {/* ───── Read Message Modal ───── */}
+      {readingMessage && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
+            <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100 dark:border-slate-800 bg-gray-50/70 dark:bg-slate-800/60">
+              <div className="flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold ${
+                  readingMessage.type === 'alert'
+                    ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300'
+                    : 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300'
+                }`}>
+                  {readingMessage.type === 'alert' ? (
+                    <AlertCircle className="w-5 h-5" />
+                  ) : (
+                    <MessageSquare className="w-5 h-5" />
+                  )}
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-gray-900 dark:text-white">
+                    {readingMessage.type === 'alert' ? 'Alerte' : 'Message'}
+                  </h3>
+                  <p className="text-xs text-gray-500 dark:text-slate-400">
+                    De {readingMessage.senderDisplay || readingMessage.sender_name || 'Équipe'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setReadingMessage(null)}
+                className="p-2 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div className="flex items-center gap-2 text-xs text-gray-400">
+                <span>Reçu le {readingMessage.created_at
+                  ? new Date(readingMessage.created_at).toLocaleDateString('fr-FR', {
+                      day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit',
+                    })
+                  : '—'}
+                </span>
+              </div>
+
+              <div className="bg-gray-50 dark:bg-slate-800 rounded-xl p-4 text-sm text-gray-800 dark:text-slate-200 leading-relaxed whitespace-pre-wrap">
+                {readingMessage.content}
+              </div>
+
+              <div className="flex items-center gap-2 pt-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">Marqué comme lu</span>
+              </div>
+            </div>
+
+            <div className="px-6 py-4 border-t border-gray-100 dark:border-slate-800 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setReadingMessage(null)}
+                className="px-4 py-2 rounded-xl text-sm font-medium text-gray-600 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"
+              >
+                <span>Fermer</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </header>
   );
 }
