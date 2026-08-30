@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS public.compagnons (
   created_by UUID REFERENCES public.profiles (id) ON DELETE SET NULL
 );
 
+
 -- ────────────────────────────────────────────────────────────
 -- 2. ROW LEVEL SECURITY (RLS)
 -- Only authenticated users can interact with compagnons.

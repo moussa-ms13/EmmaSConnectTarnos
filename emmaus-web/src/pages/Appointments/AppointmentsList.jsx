@@ -2,10 +2,10 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Calendar as CalendarIcon, Clock, MapPin, User,
   Plus, Edit3, Trash2, ChevronLeft, ChevronRight,
-  AlertTriangle, Loader2, X, CheckCircle2,
+  AlertTriangle, Loader2, X, CheckCircle2, Check, XCircle,
   HelpCircle, AlertCircle, CalendarPlus, Send,
 } from 'lucide-react';
-import { getAllAppointments, deleteAppointment } from '../../services/appointmentService';
+import { getAllAppointments, deleteAppointment, updateAppointment } from '../../services/appointmentService';
 import { fetchCompanions, fetchPendingAppointmentRequests, markAppointmentRequestHandled } from '../../services/companionService';
 import AppointmentModal from './AppointmentModal';
 import { useAuth } from '../../components/auth/AuthProvider';
@@ -34,6 +34,7 @@ function AppointmentsList() {
   const [editingAppointment, setEditingAppointment] = useState(null);
   const [defaultCompanionId, setDefaultCompanionId] = useState('');
   const [handlingRequestId, setHandlingRequestId] = useState(null);
+  const [respondingId, setRespondingId] = useState(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -59,6 +60,19 @@ function AppointmentsList() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  /** Viewer/Companion: Accept or Reject a pending appointment */
+  const handleViewerRespond = async (aptId, newStatus) => {
+    setRespondingId(aptId);
+    try {
+      await updateAppointment(aptId, { status: newStatus });
+      await loadData();
+    } catch (err) {
+      console.error('[AppointmentsList] handleViewerRespond error:', err);
+    } finally {
+      setRespondingId(null);
+    }
+  };
 
   const handleDelete = async (id) => {
     if (!window.confirm('Voulez-vous vraiment supprimer ce rendez-vous ?')) return;
@@ -464,7 +478,7 @@ function AppointmentsList() {
                         <Clock className="w-3.5 h-3.5 text-gray-400" />
                         <span>{formatDateTime(apt.appointment_date)}</span>
                       </div>
-                      {/* Actions — only for Admin/Editor */}
+                      {/* Actions — Admin/Editor: Edit/Delete */}
                       {!isViewer && (
                         <div className="flex items-center gap-1 mt-1">
                           {canEdit && (
@@ -486,6 +500,35 @@ function AppointmentsList() {
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
+                          )}
+                        </div>
+                      )}
+                      {/* Actions — Viewer/Companion: Accept/Reject pending RDVs */}
+                      {isViewer && (apt.status === 'En attente' || apt.status === 'À confirmer') && (
+                        <div className="flex items-center gap-1.5 mt-1">
+                          {respondingId === apt.id ? (
+                            <Loader2 className="w-4 h-4 text-gray-400 animate-spin" />
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => handleViewerRespond(apt.id, 'Confirmé')}
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 transition-colors shadow-sm"
+                                title="Accepter ce rendez-vous"
+                              >
+                                <Check className="w-3.5 h-3.5" />
+                                <span>Accepter</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleViewerRespond(apt.id, 'Annulé')}
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-red-600 text-white text-xs font-semibold hover:bg-red-700 transition-colors shadow-sm"
+                                title="Refuser ce rendez-vous"
+                              >
+                                <XCircle className="w-3.5 h-3.5" />
+                                <span>Refuser</span>
+                              </button>
+                            </>
                           )}
                         </div>
                       )}

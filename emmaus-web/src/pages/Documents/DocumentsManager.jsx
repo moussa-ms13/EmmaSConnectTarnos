@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import {
   getAllDocuments,
+  getCompanionDocuments,
   createDocument,
   deleteDocument,
   uploadDocument,
@@ -31,7 +32,7 @@ function formatFileSize(bytes) {
  * Strictly uses real Supabase database rows with zero mock/fallback data.
  */
 function DocumentsManager() {
-  const { canAdd, canDelete } = useAuth();
+  const { canAdd, canDelete, isAdmin, isViewer, profile, user } = useAuth();
   const [documents, setDocuments] = useState([]);
   const [companions, setCompanions] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -48,8 +49,16 @@ function DocumentsManager() {
   const loadData = async () => {
     setLoading(true);
     try {
+      // RBAC: Viewer/Companion sees only their own documents
+      let docsPromise;
+      if (isViewer) {
+        const compagnonId = profile?.compagnon_id || profile?.id || user?.id;
+        docsPromise = getCompanionDocuments(compagnonId);
+      } else {
+        docsPromise = getAllDocuments();
+      }
       const [docsRes, compRes] = await Promise.all([
-        getAllDocuments(),
+        docsPromise,
         fetchCompanions(),
       ]);
       setDocuments(docsRes.data || []);

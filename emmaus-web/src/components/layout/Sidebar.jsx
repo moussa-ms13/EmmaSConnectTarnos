@@ -111,6 +111,7 @@ function Sidebar({ mobileOpen = false, onClose }) {
     { to: '/formations', label: 'Formations', icon: BookOpen },
     { to: '/documents', label: 'Mes Documents', icon: FileText },
     { to: '/realisations', label: 'Mes Réalisations', icon: Award },
+    { to: '/conges', label: 'Congés', icon: Palmtree },
   ];
 
   const staffNavItems = [
