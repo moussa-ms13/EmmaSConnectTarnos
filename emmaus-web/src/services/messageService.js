@@ -129,6 +129,28 @@ export async function sendMessage(payload) {
       };
     }
 
+    // Immediately dispatch notification row to notifications table for recipient
+    try {
+      const notifData = {
+        user_id: payload.receiver_id,
+        receiver_id: payload.receiver_id,
+        sender_id: payload.sender_id,
+        type: payload.type || 'message',
+        title: payload.sender_name
+          ? `Message de ${payload.sender_name}`
+          : (payload.type === 'alert' ? 'Alerte prioritaire' : 'Nouveau message'),
+        content: payload.content,
+        is_read: false,
+        created_at: new Date().toISOString(),
+      };
+
+      await supabase
+        .from('notifications')
+        .insert([notifData]);
+    } catch (notifErr) {
+      console.warn('⚠️ Could not insert notification row:', notifErr?.message || notifErr);
+    }
+
     return { data, error: null };
   } catch (err) {
     console.error('❌ Unexpected error in sendMessage:', err);
@@ -156,12 +178,18 @@ export async function markMessageAsRead(messageId) {
       return { error: null };
     }
 
-    const { error } = await supabase
-      .from('messages')
-      .update({ is_read: true })
-      .eq('id', messageId);
+    const [msgRes, notifRes] = await Promise.all([
+      supabase
+        .from('messages')
+        .update({ is_read: true })
+        .eq('id', messageId),
+      supabase
+        .from('notifications')
+        .update({ is_read: true })
+        .eq('id', messageId),
+    ]);
 
-    return { error };
+    return { error: msgRes.error || notifRes.error || null };
   } catch (err) {
     console.error('❌ Error in markMessageAsRead:', err);
     return { error: err };

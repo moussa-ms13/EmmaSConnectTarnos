@@ -57,10 +57,10 @@ function SendMessageModal({ isOpen, onClose, defaultReceiverId, defaultReceiverN
       const { data: comps } = await fetchCompanions();
       if (comps) {
         comps.forEach((c) => {
-          // Avoid duplicates (some compagnons may also be in profiles)
-          if (!list.find((r) => r.id === c.id)) {
+          const targetId = c.user_id || c.id;
+          if (!list.find((r) => r.id === targetId)) {
             list.push({
-              id: c.id,
+              id: targetId,
               name: `${c.first_name || ''} ${c.last_name || ''}`.trim() || 'Compagnon',
               type: 'compagnon',
             });
